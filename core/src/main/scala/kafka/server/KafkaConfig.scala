@@ -62,6 +62,12 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   
   /* the number of queued requests allowed before blocking the network threads */
   val queuedMaxRequests = props.getIntInRange("queued.max.requests", 500, (1, Int.MaxValue))
+
+  /* determines whether metrics reporting enabled or disabled */
+  val metricsEnabled = props.getBoolean("metrics.enabled", false)
+
+  /* specifies reporter class */
+  val metricsReporters = props.getString("kafka.metrics.reporters", "kafka.metrics.KafkaTopicReporter")
   
   /*********** Socket Server Configuration ***********/
   

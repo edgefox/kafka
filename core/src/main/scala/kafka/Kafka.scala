@@ -33,7 +33,10 @@ object Kafka extends Logging {
     try {
       val props = Utils.loadProps(args(0))
       val serverConfig = new KafkaConfig(props)
-      KafkaMetricsReporter.startReporters(serverConfig.props)
+      if (serverConfig.metricsEnabled) {
+        props.put("metadata.broker.list", "%s:%d".format(serverConfig.hostName, serverConfig.port))
+        KafkaMetricsReporter.startReporters(serverConfig.props)
+      }
       val kafkaServerStartble = new KafkaServerStartable(serverConfig)
 
       // attach shutdown handler to catch control-c
