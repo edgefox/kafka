@@ -27,19 +27,20 @@ class MessageCompressionTest extends JUnitSuite {
   
   @Test
   def testSimpleCompressDecompress() {
-    val codecs = mutable.ArrayBuffer[CompressionCodec](GZIPCompressionCodec)
+    val codecs = mutable.ArrayBuffer[CompressionCodec]()
     if(isSnappyAvailable)
-      codecs += SnappyCompressionCodec
+      //codecs += SnappyCompressionCodec
     if(isLZ4Available)
       codecs += LZ4CompressionCodec
-    if (izLZ4HCAvailable)
-      codecs += LZ4HCCompressionCodec
     for(codec <- codecs)
       testSimpleCompressDecompress(codec)
   }
   
   def testSimpleCompressDecompress(compressionCodec: CompressionCodec) {
-    val messages = List[Message](new Message("hi there".getBytes), new Message("I am fine".getBytes), new Message("I am not so well today".getBytes))
+    val messages = new mutable.MutableList[Message]
+    for (i <- 1 until 1000000) {
+      messages += new Message("hi there %d".format(i).getBytes)
+    }
     val messageSet = new ByteBufferMessageSet(compressionCodec = compressionCodec, messages = messages:_*)
     assertEquals(compressionCodec, messageSet.shallowIterator.next.message.compressionCodec)
     val decompressed = messageSet.iterator.map(_.message).toList
@@ -69,16 +70,6 @@ class MessageCompressionTest extends JUnitSuite {
   def isLZ4Available(): Boolean = {
     try {
       val lz4 = new net.jpountz.lz4.LZ4BlockOutputStream(new ByteArrayOutputStream())
-      true
-    } catch {
-      case e: UnsatisfiedLinkError => false
-    }
-  }
-
-  def izLZ4HCAvailable(): Boolean = {
-    try {
-      val lz4hc = new net.jpountz.lz4.LZ4BlockOutputStream(new ByteArrayOutputStream(), 1 << 16, 
-        net.jpountz.lz4.LZ4Factory.fastestInstance().highCompressor())
       true
     } catch {
       case e: UnsatisfiedLinkError => false

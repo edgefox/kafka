@@ -225,20 +225,6 @@ public class Compressor {
                     } catch (Exception e) {
                         throw new KafkaException(e);
                     }
-                case LZ4HC:
-                    try {
-                        Class<?> factoryClass = Class.forName("net.jpountz.lz4.LZ4Factory");
-                        Class<?> compressorClass = Class.forName("net.jpountz.lz4.LZ4Compressor");
-                        Class<?> lz4BlockOutputStream = Class.forName("net.jpountz.lz4.LZ4BlockOutputStream");
-                        Object factory = factoryClass.getMethod("fastestInstance").invoke(null);
-                        Object compressor = factoryClass.getMethod("highCompressor").invoke(factory);
-                        OutputStream stream = (OutputStream) lz4BlockOutputStream
-                            .getConstructor(OutputStream.class, Integer.TYPE, compressorClass)
-                            .newInstance(buffer, 1 << 16, compressor);
-                        return new DataOutputStream(stream);
-                    } catch (Exception e) {
-                        throw new KafkaException(e);
-                    }
                 default:
                     throw new IllegalArgumentException("Unknown compression type: " + type);
             }
@@ -266,7 +252,6 @@ public class Compressor {
                         throw new KafkaException(e);
                     }
                 case LZ4:
-                case LZ4HC:
                     // dynamically load LZ4 class to avoid runtime dependency
                     try {
                         Class inputStreamClass = Class.forName("net.jpountz.lz4.LZ4BlockInputStream");
