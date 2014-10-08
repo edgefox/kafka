@@ -16,7 +16,11 @@
  */
 package org.apache.kafka.common.record;
 
+import net.jpountz.lz4.LZ4Compressor;
+import net.jpountz.lz4.LZ4Factory;
+import net.jpountz.lz4.LZ4FastDecompressor;
 import org.apache.kafka.common.KafkaException;
+import org.apache.kafka.common.utils.MessageLengthChecksum;
 import org.apache.kafka.common.utils.Utils;
 
 import java.io.InputStream;
@@ -25,6 +29,7 @@ import java.io.DataInputStream;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.zip.Checksum;
 import java.util.zip.GZIPInputStream;
 import java.util.zip.GZIPOutputStream;
 
@@ -219,8 +224,8 @@ public class Compressor {
                 case LZ4:
                     try {
                         Class LZ4BlockOutputStream = Class.forName("net.jpountz.lz4.LZ4BlockOutputStream");
-                        OutputStream stream = (OutputStream) LZ4BlockOutputStream.getConstructor(OutputStream.class)
-                            .newInstance(buffer);
+                        OutputStream stream = (OutputStream) LZ4BlockOutputStream.getConstructor(OutputStream.class, Integer.TYPE, LZ4Compressor.class, Checksum.class, Boolean.TYPE)
+                                .newInstance(buffer, 1 << 16, LZ4Factory.fastestInstance().fastCompressor(), new MessageLengthChecksum(), false);
                         return new DataOutputStream(stream);
                     } catch (Exception e) {
                         throw new KafkaException(e);
@@ -255,8 +260,8 @@ public class Compressor {
                     // dynamically load LZ4 class to avoid runtime dependency
                     try {
                         Class inputStreamClass = Class.forName("net.jpountz.lz4.LZ4BlockInputStream");
-                        InputStream stream = (InputStream) inputStreamClass.getConstructor(InputStream.class)
-                            .newInstance(buffer);
+                        InputStream stream = (InputStream) inputStreamClass.getConstructor(InputStream.class, LZ4FastDecompressor.class, Checksum.class)
+                            .newInstance(buffer, LZ4Factory.fastestInstance().fastDecompressor(), new MessageLengthChecksum());
                         return new DataInputStream(stream);
                     } catch (Exception e) {
                         throw new KafkaException(e);

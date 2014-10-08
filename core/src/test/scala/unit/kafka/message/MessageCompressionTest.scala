@@ -27,9 +27,9 @@ class MessageCompressionTest extends JUnitSuite {
   
   @Test
   def testSimpleCompressDecompress() {
-    val codecs = mutable.ArrayBuffer[CompressionCodec]()
+    val codecs = mutable.ArrayBuffer[CompressionCodec](GZIPCompressionCodec)
     if(isSnappyAvailable)
-      //codecs += SnappyCompressionCodec
+      codecs += SnappyCompressionCodec
     if(isLZ4Available)
       codecs += LZ4CompressionCodec
     for(codec <- codecs)
@@ -37,10 +37,7 @@ class MessageCompressionTest extends JUnitSuite {
   }
   
   def testSimpleCompressDecompress(compressionCodec: CompressionCodec) {
-    val messages = new mutable.MutableList[Message]
-    for (i <- 1 until 1000000) {
-      messages += new Message("hi there %d".format(i).getBytes)
-    }
+    val messages = List[Message](new Message("hi there".getBytes), new Message("I am fine".getBytes), new Message("I am not so well today".getBytes))
     val messageSet = new ByteBufferMessageSet(compressionCodec = compressionCodec, messages = messages:_*)
     assertEquals(compressionCodec, messageSet.shallowIterator.next.message.compressionCodec)
     val decompressed = messageSet.iterator.map(_.message).toList
