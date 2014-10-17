@@ -17,23 +17,19 @@
 
 package kafka.utils
 
-import kafka.cluster.{Broker, Cluster}
-import kafka.consumer.{ConsumerThreadId, TopicCount}
-import org.I0Itec.zkclient.ZkClient
-import org.I0Itec.zkclient.exception.{ZkNodeExistsException, ZkNoNodeException,
-  ZkMarshallingError, ZkBadVersionException}
-import org.I0Itec.zkclient.serialize.ZkSerializer
-import collection._
-import kafka.api.LeaderAndIsr
-import org.apache.zookeeper.data.Stat
 import kafka.admin._
-import kafka.common.{KafkaException, NoEpochForPartitionException}
-import kafka.controller.ReassignedPartitionsContext
-import kafka.controller.KafkaController
-import scala.Some
-import kafka.controller.LeaderIsrAndControllerEpoch
-import kafka.common.TopicAndPartition
-import scala.collection
+import kafka.api.LeaderAndIsr
+import kafka.cluster.{Broker, Cluster}
+import kafka.common.{KafkaException, NoEpochForPartitionException, TopicAndPartition}
+import kafka.consumer.{ConsumerThreadId, TopicCount}
+import kafka.controller.{KafkaController, LeaderIsrAndControllerEpoch, ReassignedPartitionsContext}
+import kafka.network.ConnectionType
+import org.I0Itec.zkclient.ZkClient
+import org.I0Itec.zkclient.exception.{ZkBadVersionException, ZkMarshallingError, ZkNoNodeException, ZkNodeExistsException}
+import org.I0Itec.zkclient.serialize.ZkSerializer
+import org.apache.zookeeper.data.Stat
+
+import scala.collection._
 
 object ZkUtils extends Logging {
   val ConsumersPath = "/consumers"
@@ -158,11 +154,11 @@ object ZkUtils extends Logging {
     }
   }
 
-  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, timeout: Int, jmxPort: Int) {
+  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, connectionType: ConnectionType, timeout: Int, jmxPort: Int) {
     val brokerIdPath = ZkUtils.BrokerIdsPath + "/" + id
     val timestamp = SystemTime.milliseconds.toString
-    val brokerInfo = Json.encode(Map("version" -> 1, "host" -> host, "port" -> port, "jmx_port" -> jmxPort, "timestamp" -> timestamp))
-    val expectedBroker = new Broker(id, host, port)
+    val brokerInfo = Json.encode(Map("version" -> 1, "host" -> host, "port" -> port, "jmx_port" -> jmxPort, "timestamp" -> timestamp, "type" -> connectionType.name))
+    val expectedBroker = new Broker(id, host, port, connectionType)
 
     try {
       createEphemeralPathExpectConflictHandleZKBug(zkClient, brokerIdPath, brokerInfo, expectedBroker,

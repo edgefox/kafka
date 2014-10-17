@@ -21,7 +21,7 @@ import org.apache.kafka.common.KafkaException;
 
 public class Utils {
 
-    private static final Pattern HOST_PORT_PATTERN = Pattern.compile("\\[?(.+?)\\]?:(\\d+)");
+    private static final Pattern HOST_PORT_PATTERN = Pattern.compile("\\[?(.+?)\\]?:(\\d+):(.+?)");
 
     public static String NL = System.getProperty("line.separator");
 
@@ -242,15 +242,25 @@ public class Utils {
     }
 
     /**
+     * Extracts the hostname from a "host:port" address string.
+     * @param address address string to parse
+     * @return hostname or null if the given address is incorrect
+     */
+    public static String getConnectionType(String address) {
+        Matcher matcher = HOST_PORT_PATTERN.matcher(address);
+        return matcher.matches() ? matcher.group(3) : null;
+    }
+
+    /**
      * Formats hostname and port number as a "host:port" address string,
      * surrounding IPv6 addresses with braces '[', ']'
      * @param host hostname
      * @param port port number
      * @return address string
      */
-    public static String formatAddress(String host, Integer port) {
+    public static String formatAddress(String host, Integer port, String connectionType) {
         return host.contains(":")
-                ? "[" + host + "]:" + port // IPv6
-                : host + ":" + port;
+                ? "[" + host + "]:" + port + connectionType // IPv6
+                : host + ":" + port + ":" + connectionType;
     }
 }

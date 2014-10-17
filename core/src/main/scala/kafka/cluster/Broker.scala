@@ -17,6 +17,7 @@
 
 package kafka.cluster
 
+import kafka.network.ConnectionType
 import kafka.utils.Utils._
 import kafka.utils.Json
 import kafka.api.ApiUtils._
@@ -38,7 +39,8 @@ object Broker {
           val brokerInfo = m.asInstanceOf[Map[String, Any]]
           val host = brokerInfo.get("host").get.asInstanceOf[String]
           val port = brokerInfo.get("port").get.asInstanceOf[Int]
-          new Broker(id, host, port)
+          val connectionType = brokerInfo.get("type").get.asInstanceOf[String]
+          new Broker(id, host, port, ConnectionType.getConnectionType(connectionType))
         case None =>
           throw new BrokerNotAvailableException("Broker id %d does not exist".format(id))
       }
@@ -51,32 +53,34 @@ object Broker {
     val id = buffer.getInt
     val host = readShortString(buffer)
     val port = buffer.getInt
-    new Broker(id, host, port)
+    val connectionType = readShortString(buffer)
+    new Broker(id, host, port, ConnectionType.getConnectionType(connectionType))
   }
 }
 
-case class Broker(id: Int, host: String, port: Int) {
+case class Broker(id: Int, host: String, port: Int, connectionType: ConnectionType) {
   
-  override def toString: String = "id:" + id + ",host:" + host + ",port:" + port
+  override def toString: String = "id:" + id + ",host:" + host + ",port:" + port + ",type:" + connectionType.name
 
-  def connectionString: String = formatAddress(host, port)
+  def connectionString: String = formatAddress(host, port, connectionType.name)
 
   def writeTo(buffer: ByteBuffer) {
     buffer.putInt(id)
     writeShortString(buffer, host)
     buffer.putInt(port)
+    writeShortString(buffer, connectionType.name)
   }
 
-  def sizeInBytes: Int = shortStringLength(host) /* host name */ + 4 /* port */ + 4 /* broker id*/
+  def sizeInBytes: Int = shortStringLength(host) /* host name */ + 4 /* port */ + 4 /* broker id*/ + shortStringLength(connectionType.name) /* connection type */
 
   override def equals(obj: Any): Boolean = {
     obj match {
       case null => false
-      case n: Broker => id == n.id && host == n.host && port == n.port
+      case n: Broker => id == n.id && host == n.host && port == n.port && connectionType == n.connectionType
       case _ => false
     }
   }
   
-  override def hashCode(): Int = hashcode(id, host, port)
+  override def hashCode(): Int = hashcode(id, host, port, connectionType)
   
 }

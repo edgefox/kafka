@@ -24,11 +24,11 @@ import kafka.common.{ErrorMapping, KafkaException}
 import kafka.utils.{Utils, Logging}
 import java.util.Properties
 import util.Random
- import kafka.network.BlockingChannel
+ import kafka.network.{ConnectionType, BlockingChannel}
  import kafka.utils.ZkUtils._
  import org.I0Itec.zkclient.ZkClient
  import java.io.IOException
-import org.apache.kafka.common.utils.Utils.{getHost, getPort}
+import org.apache.kafka.common.utils.Utils.{getHost, getPort, getConnectionType}
 
  /**
  * Helper functions common to clients (producer, consumer, or admin)
@@ -94,13 +94,13 @@ object ClientUtils extends Logging{
   }
 
   /**
-   * Parse a list of broker urls in the form host1:port1, host2:port2, ... 
+   * Parse a list of broker urls in the form host1:port1:type, host2:port2:type, ...
    */
   def parseBrokerList(brokerListStr: String): Seq[Broker] = {
     val brokersStr = Utils.parseCsvList(brokerListStr)
 
     brokersStr.zipWithIndex.map { case (address, brokerId) =>
-      new Broker(brokerId, getHost(address), getPort(address))
+      new Broker(brokerId, getHost(address), getPort(address), ConnectionType.getConnectionType(getConnectionType(address)))
     }
   }
 

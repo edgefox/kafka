@@ -17,6 +17,7 @@
 
 package kafka.server
 
+import kafka.network.ConnectionType
 import kafka.utils._
 import org.apache.zookeeper.Watcher.Event.KeeperState
 import org.I0Itec.zkclient.{IZkStateListener, ZkClient}
@@ -26,14 +27,14 @@ import java.net.InetAddress
 /**
  * This class registers the broker in zookeeper to allow 
  * other brokers and consumers to detect failures. It uses an ephemeral znode with the path:
- *   /brokers/[0...N] --> advertisedHost:advertisedPort
+ *   /brokers/[0...N] --> advertisedHost:advertisedPorts
  *   
  * Right now our definition of health is fairly naive. If we register in zk we are healthy, otherwise
  * we are dead.
  */
 class KafkaHealthcheck(private val brokerId: Int, 
                        private val advertisedHost: String, 
-                       private val advertisedPort: Int,
+                       private val advertisedPorts: Map[Int, ConnectionType],
                        private val zkSessionTimeoutMs: Int,
                        private val zkClient: ZkClient) extends Logging {
 
@@ -60,7 +61,8 @@ class KafkaHealthcheck(private val brokerId: Int,
       else
         advertisedHost
     val jmxPort = System.getProperty("com.sun.management.jmxremote.port", "-1").toInt
-    ZkUtils.registerBrokerInZk(zkClient, brokerId, advertisedHostName, advertisedPort, zkSessionTimeoutMs, jmxPort)
+    advertisedPorts.foreach(entry => ZkUtils.registerBrokerInZk(zkClient, brokerId, advertisedHostName,
+                                                                entry._1, entry._2, zkSessionTimeoutMs, jmxPort))
   }
 
   /**
