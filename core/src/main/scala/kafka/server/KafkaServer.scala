@@ -148,6 +148,9 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
       SSLAuth.initialize(sslConfig)
       portToChannelFactory += sslConfig.port -> new SSLChannelFactory(sslConfig.wantClientAuth, sslConfig.needClientAuth)
     }
+
+    if (portToChannelFactory.isEmpty) portToChannelFactory += 9092 -> new PlainSocketChannelFactory()
+
     portToChannelFactory.toMap
   }
 
