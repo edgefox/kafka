@@ -17,23 +17,24 @@
 
 package kafka.server
 
-import kafka.admin._
-import kafka.log.LogConfig
-import kafka.log.CleanerConfig
-import kafka.log.LogManager
-import kafka.utils._
-import java.util.concurrent._
-import atomic.{AtomicInteger, AtomicBoolean}
 import java.io.File
-import java.net.BindException
-import org.I0Itec.zkclient.ZkClient
-import kafka.controller.{ControllerStats, KafkaController}
-import kafka.cluster.Broker
-import kafka.api.{ControlledShutdownResponse, ControlledShutdownRequest}
-import kafka.common.ErrorMapping
-import kafka.network.{Receive, BlockingChannel, SocketServer}
-import kafka.metrics.KafkaMetricsGroup
+import java.util.concurrent._
+import java.util.concurrent.atomic.{AtomicBoolean, AtomicInteger}
+
 import com.yammer.metrics.core.Gauge
+import kafka.admin._
+import kafka.api.{ControlledShutdownRequest, ControlledShutdownResponse}
+import kafka.cluster.Broker
+import kafka.common.ErrorMapping
+import kafka.controller.{ControllerStats, KafkaController}
+import kafka.log.{CleanerConfig, LogConfig, LogManager}
+import kafka.metrics.KafkaMetricsGroup
+import kafka.network.ssl.{SSLChannelFactory, SSLConnectionConfig, SSLAuth}
+import kafka.network._
+import kafka.utils._
+import org.I0Itec.zkclient.ZkClient
+
+import scala.collection.{Map, mutable}
 
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
@@ -88,14 +89,15 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       socketServer = new SocketServer(config.brokerId,
                                       config.hostName,
-                                      config.port,
+                                      portsToChannelFactories,
                                       config.numNetworkThreads,
                                       config.queuedMaxRequests,
                                       config.socketSendBufferBytes,
                                       config.socketReceiveBufferBytes,
                                       config.socketRequestMaxBytes,
                                       config.maxConnectionsPerIp,
-                                      config.connectionsMaxIdleMs)
+                                      config.connectionsMaxIdleMs,
+                                      Map.empty[String, Int])
       socketServer.startup()
 
       replicaManager = new ReplicaManager(config, time, zkClient, kafkaScheduler, logManager, isShuttingDown)
@@ -134,6 +136,19 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         shutdown()
         throw e
     }
+  }
+  
+  def portsToChannelFactories: Map[Int, ChannelFactory] = {
+    val portToChannelFactory = mutable.Map.empty[Int, ChannelFactory]
+    if (config.port > 0) {
+      portToChannelFactory += config.port -> new PlainSocketChannelFactory()
+    }
+    if (config.sslEnabled) {
+      val sslConfig = SSLConnectionConfig.server
+      SSLAuth.initialize(sslConfig)
+      portToChannelFactory += sslConfig.port -> new SSLChannelFactory(sslConfig.wantClientAuth, sslConfig.needClientAuth)
+    }
+    portToChannelFactory.toMap
   }
 
   private def initZk(): ZkClient = {

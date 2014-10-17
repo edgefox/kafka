@@ -18,9 +18,10 @@
 package kafka.server
 
 import java.util.Properties
-import kafka.message.{MessageSet, Message}
+
 import kafka.consumer.ConsumerConfig
-import kafka.utils.{VerifiableProperties, ZKConfig, Utils}
+import kafka.message.{Message, MessageSet}
+import kafka.utils.{Utils, VerifiableProperties, ZKConfig}
 
 /**
  * Configuration settings for the kafka server
@@ -81,7 +82,10 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /*********** Socket Server Configuration ***********/
 
   /* the port to listen and accept connections on */
-  val port: Int = props.getInt("port", 6667)
+  val port: Int = props.getInt("port", -1)
+  
+  /* is this running SSL */
+  val sslEnabled: Boolean = props.getBoolean("secure.ssl.enabled", false)
 
   /* hostname of broker. If this is set, it will only bind to this address. If this is not set,
    * it will bind to all interfaces */
@@ -319,5 +323,5 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
-
+  
 }

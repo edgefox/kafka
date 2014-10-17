@@ -17,19 +17,19 @@
 
 package kafka.network
 
+import java.io._
+import java.net._
+import java.nio.channels._
 import java.util
 import java.util.concurrent._
 import java.util.concurrent.atomic._
-import java.net._
-import java.io._
-import java.nio.channels._
 
-import scala.collection._
-
+import com.yammer.metrics.core.{Gauge, Meter}
 import kafka.common.KafkaException
 import kafka.metrics.KafkaMetricsGroup
 import kafka.utils._
-import com.yammer.metrics.core.{Gauge, Meter}
+
+import scala.collection._
 
 /**
  * An NIO socket server. The threading model is
@@ -39,29 +39,54 @@ import com.yammer.metrics.core.{Gauge, Meter}
  */
 class SocketServer(val brokerId: Int,
                    val host: String,
-                   val port: Int,
+                   val ports: Map[Int, ChannelFactory],
                    val numProcessorThreads: Int,
                    val maxQueuedRequests: Int,
                    val sendBufferSize: Int,
                    val recvBufferSize: Int,
-                   val maxRequestSize: Int = Int.MaxValue,
-                   val maxConnectionsPerIp: Int = Int.MaxValue,
+                   val maxRequestSize: Int,
+                   val maxConnectionsPerIp: Int,
                    val connectionsMaxIdleMs: Long,
-                   val maxConnectionsPerIpOverrides: Map[String, Int] = Map[String, Int]()) extends Logging with KafkaMetricsGroup {
-  this.logIdent = "[Socket Server on Broker " + brokerId + "], "
+                   val maxConnectionsPerIpOverrides: Map[String, Int]) extends Logging with KafkaMetricsGroup {
+  val port = ports.head._1
   private val time = SystemTime
   private val processors = new Array[Processor](numProcessorThreads)
   @volatile private var acceptor: Acceptor = null
   val requestChannel = new RequestChannel(numProcessorThreads, maxQueuedRequests)
+  this.logIdent = "[Socket Server on Broker " + brokerId + "], "
 
   /* a meter to track the average free capacity of the network processors */
   private val aggregateIdleMeter = newMeter("NetworkProcessorAvgIdlePercent", "percent", TimeUnit.NANOSECONDS)
+  private val quotas = new ConnectionQuotas(maxConnectionsPerIp, maxConnectionsPerIpOverrides)
+
+  def this(brokerId: Int,
+           host: String,
+           port: Int,
+           numProcessorThreads: Int,
+           maxQueuedRequests: Int,
+           sendBufferSize: Int,
+           recvBufferSize: Int,
+           maxRequestSize: Int = Int.MaxValue,
+           maxConnectionsPerIp: Int = Int.MaxValue,
+           connectionsMaxIdleMs: Long,
+           maxConnectionsPerIpOverrides: Map[String, Int] = Map.empty[String, Int]) {
+    this(brokerId,
+         host,
+         Map(port -> new PlainSocketChannelFactory()),
+         numProcessorThreads,
+         maxQueuedRequests,
+         sendBufferSize,
+         recvBufferSize,
+         maxRequestSize,
+         maxConnectionsPerIp,
+         connectionsMaxIdleMs,
+         maxConnectionsPerIpOverrides)
+  }
 
   /**
    * Start the socket server
    */
   def startup() {
-    val quotas = new ConnectionQuotas(maxConnectionsPerIp, maxConnectionsPerIpOverrides)
     for(i <- 0 until numProcessorThreads) {
       processors(i) = new Processor(i, 
                                     time, 
@@ -72,7 +97,7 @@ class SocketServer(val brokerId: Int,
                                     requestChannel,
                                     quotas,
                                     connectionsMaxIdleMs)
-      Utils.newThread("kafka-network-thread-%d-%d".format(port, i), processors(i), false).start()
+      Utils.newThread("kafka-network-thread-%d".format(i), processors(i), false).start()
     }
 
     newGauge("ResponsesBeingSent", new Gauge[Int] {
@@ -83,7 +108,7 @@ class SocketServer(val brokerId: Int,
     requestChannel.addResponseListener((id:Int) => processors(id).wakeup())
    
     // start accepting connections
-    this.acceptor = new Acceptor(host, port, processors, sendBufferSize, recvBufferSize, quotas)
+    this.acceptor = new Acceptor(host, ports, processors, sendBufferSize, recvBufferSize, quotas)
     Utils.newThread("kafka-socket-acceptor", acceptor, false).start()
     acceptor.awaitStartup
     info("Started")
@@ -197,18 +222,23 @@ private[kafka] abstract class AbstractServerThread(connectionQuotas: ConnectionQ
  * Thread that accepts and configures new connections. There is only need for one of these
  */
 private[kafka] class Acceptor(val host: String, 
-                              val port: Int, 
+                              val ports: Map[Int, ChannelFactory],
                               private val processors: Array[Processor],
                               val sendBufferSize: Int, 
                               val recvBufferSize: Int,
                               connectionQuotas: ConnectionQuotas) extends AbstractServerThread(connectionQuotas) {
-  val serverChannel = openServerSocket(host, port)
+  private val channelToFactory = mutable.Map.empty[SelectableChannel, ChannelFactory]
 
   /**
    * Accept loop that checks for new connection attempts
    */
   def run() {
-    serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+    for ((port, channelFactory) <- ports) {
+      val serverChannel = openServerSocket(host, port)
+      serverChannel.register(selector, SelectionKey.OP_ACCEPT)
+      channelToFactory += serverChannel -> channelFactory
+    }
+
     startupComplete()
     var currentProcessor = 0
     while(isRunning) {
@@ -235,7 +265,7 @@ private[kafka] class Acceptor(val host: String,
       }
     }
     debug("Closing server socket and selector.")
-    swallowError(serverChannel.close())
+    channelToFactory.foreach(entry => swallowError(entry._1.close()))
     swallowError(selector.close())
     shutdownComplete()
   }
@@ -267,23 +297,16 @@ private[kafka] class Acceptor(val host: String,
    */
   def accept(key: SelectionKey, processor: Processor) {
     val serverSocketChannel = key.channel().asInstanceOf[ServerSocketChannel]
-    val socketChannel = serverSocketChannel.accept()
+    var socketChannel: Option[KafkaChannel] = None
     try {
-      connectionQuotas.inc(socketChannel.socket().getInetAddress)
-      socketChannel.configureBlocking(false)
-      socketChannel.socket().setTcpNoDelay(true)
-      socketChannel.socket().setSendBufferSize(sendBufferSize)
-
-      debug("Accepted connection from %s on %s. sendBufferSize [actual|requested]: [%d|%d] recvBufferSize [actual|requested]: [%d|%d]"
-            .format(socketChannel.socket.getInetAddress, socketChannel.socket.getLocalSocketAddress,
-                  socketChannel.socket.getSendBufferSize, sendBufferSize,
-                  socketChannel.socket.getReceiveBufferSize, recvBufferSize))
-
-      processor.accept(socketChannel)
+      val channelFactory = channelToFactory(serverSocketChannel)
+      socketChannel = Some(channelFactory.create(serverSocketChannel, recvBufferSize, sendBufferSize))
+      connectionQuotas.inc(socketChannel.get.socket().getInetAddress)
+      processor.accept(socketChannel.get)
     } catch {
       case e: TooManyConnectionsException =>
         info("Rejected connection from %s, address already has the configured maximum of %d connections.".format(e.ip, e.count))
-        close(socketChannel)
+        if (socketChannel.isDefined) close(socketChannel.get)
     }
   }
 
@@ -303,7 +326,8 @@ private[kafka] class Processor(val id: Int,
                                connectionQuotas: ConnectionQuotas,
                                val connectionsMaxIdleMs: Long) extends AbstractServerThread(connectionQuotas) {
 
-  private val newConnections = new ConcurrentLinkedQueue[SocketChannel]()
+  private val newConnections = new ConcurrentLinkedQueue[KafkaChannel]()
+  private val regularChannelToKafkaChannel = new ConcurrentHashMap[SelectableChannel, KafkaChannel]()
   private val connectionsMaxIdleNanos = connectionsMaxIdleMs * 1000 * 1000
   private var currentTimeNanos = SystemTime.nanoseconds
   private val lruConnections = new util.LinkedHashMap[SelectionKey, Long]
@@ -371,6 +395,7 @@ private[kafka] class Processor(val id: Int,
    */
   override def close(key: SelectionKey): Unit = {
     lruConnections.remove(key)
+    regularChannelToKafkaChannel.remove(key)
     super.close(key)
   }
 
@@ -387,6 +412,7 @@ private[kafka] class Processor(val id: Int,
             trace("Socket server received empty response to send, registering for read: " + curr)
             key.interestOps(SelectionKey.OP_READ)
             key.attach(null)
+            readExtraIfNeeded(key)
           }
           case RequestChannel.SendAction => {
             trace("Socket server received response to send, registering for write: " + curr)
@@ -414,9 +440,31 @@ private[kafka] class Processor(val id: Int,
   /**
    * Queue up a new connection for reading
    */
-  def accept(socketChannel: SocketChannel) {
+  def accept(socketChannel: KafkaChannel) {
     newConnections.add(socketChannel)
     wakeup()
+  }
+
+  private def readExtraIfNeeded(key: SelectionKey) {
+    try {
+      if (channelFor(key).isExtraReadRequired) {
+        read(key)
+      }
+    } catch {
+      case e: EOFException => {
+        info("Closing socket connection to %s.".format(channelFor(key).socket.getInetAddress))
+        close(key)
+      }
+      case e: InvalidRequestException => {
+        info("Closing socket connection to %s due to invalid request: %s".format(channelFor(key).socket.getInetAddress,
+                                                                                 e.getMessage))
+        close(key)
+      }
+      case e: Throwable => {
+        error("Closing socket for %s because of error".format(channelFor(key).socket.getInetAddress), e)
+        close(key)
+      }
+    }
   }
 
   /**
@@ -426,7 +474,8 @@ private[kafka] class Processor(val id: Int,
     while(newConnections.size() > 0) {
       val channel = newConnections.poll()
       debug("Processor " + id + " listening to new connection from " + channel.socket.getRemoteSocketAddress)
-      channel.register(selector, SelectionKey.OP_READ)
+      regularChannelToKafkaChannel.put(channel.underlying, channel)
+      channel.registerSelector(selector, SelectionKey.OP_READ)
     }
   }
 
@@ -435,7 +484,8 @@ private[kafka] class Processor(val id: Int,
    */
   def read(key: SelectionKey) {
     lruConnections.put(key, currentTimeNanos)
-    val socketChannel = channelFor(key)
+    val socketChannel = channelFor(key, SelectionKey.OP_READ)
+    if (socketChannel == null) return
     var receive = key.attachment.asInstanceOf[Receive]
     if(key.attachment == null) {
       receive = new BoundedByteBufferReceive(maxRequestSize)
@@ -464,7 +514,8 @@ private[kafka] class Processor(val id: Int,
    * Process writes to ready sockets
    */
   def write(key: SelectionKey) {
-    val socketChannel = channelFor(key)
+    val socketChannel = channelFor(key, SelectionKey.OP_WRITE)
+    if (socketChannel == null) return
     val response = key.attachment().asInstanceOf[RequestChannel.Response]
     val responseSend = response.responseSend
     if(responseSend == null)
@@ -476,6 +527,7 @@ private[kafka] class Processor(val id: Int,
       key.attach(null)
       trace("Finished writing, registering for read on connection " + socketChannel.socket.getRemoteSocketAddress())
       key.interestOps(SelectionKey.OP_READ)
+      readExtraIfNeeded(key)
     } else {
       trace("Did not finish writing, registering for write again on connection " + socketChannel.socket.getRemoteSocketAddress())
       key.interestOps(SelectionKey.OP_WRITE)
@@ -483,7 +535,11 @@ private[kafka] class Processor(val id: Int,
     }
   }
 
-  private def channelFor(key: SelectionKey) = key.channel().asInstanceOf[SocketChannel]
+  private def channelFor(key: SelectionKey, selectOption: Int = -1) = kafkaChannel(key.channel()).forKey(key, selectOption)
+
+  private def kafkaChannel(regularChannel: SelectableChannel): KafkaChannel = {
+    regularChannelToKafkaChannel.get(regularChannel)
+  }
 
   private def maybeCloseOldestConnection {
     if(currentTimeNanos > nextIdleCloseCheckTime) {
