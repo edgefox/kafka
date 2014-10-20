@@ -23,12 +23,12 @@ import kafka.utils.Logging
 
 abstract class ChannelFactory extends Logging {
   def create(serverSocketChannel: ServerSocketChannel, recvBufferSize: Int, sendBufferSize: Int): KafkaChannel = {
-    val channel = createSocket(serverSocketChannel)
+    val channel = createChannel(serverSocketChannel)
     configure(channel, recvBufferSize, sendBufferSize)
     channel
   }
 
-  protected def createSocket(serverSocketChannel: ServerSocketChannel): KafkaChannel
+  protected def createChannel(serverSocketChannel: ServerSocketChannel): KafkaChannel
 
   protected def configure(socketChannel: SocketChannel, recvBufferSize: Int, sendBufferSize: Int) {
     socketChannel.configureBlocking(false)

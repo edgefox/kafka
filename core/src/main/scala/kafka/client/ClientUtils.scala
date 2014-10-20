@@ -16,19 +16,21 @@
  */
  package kafka.client
 
-import scala.collection._
-import kafka.cluster._
-import kafka.api._
-import kafka.producer._
-import kafka.common.{ErrorMapping, KafkaException}
-import kafka.utils.{Utils, Logging}
+import java.io.IOException
 import java.util.Properties
-import util.Random
- import kafka.network.{ConnectionType, BlockingChannel}
- import kafka.utils.ZkUtils._
- import org.I0Itec.zkclient.ZkClient
- import java.io.IOException
-import org.apache.kafka.common.utils.Utils.{getHost, getPort, getConnectionType}
+
+import kafka.api._
+import kafka.cluster._
+import kafka.common.{ErrorMapping, KafkaException}
+import kafka.network.{BlockingChannel, ChannelType, PlaintextChannelType}
+import kafka.producer._
+import kafka.utils.ZkUtils._
+import kafka.utils.{Logging, Utils}
+import org.I0Itec.zkclient.ZkClient
+import org.apache.kafka.common.utils.Utils.{getHost, getPort}
+
+import scala.collection._
+import scala.util.Random
 
  /**
  * Helper functions common to clients (producer, consumer, or admin)
@@ -100,31 +102,38 @@ object ClientUtils extends Logging{
     val brokersStr = Utils.parseCsvList(brokerListStr)
 
     brokersStr.zipWithIndex.map { case (address, brokerId) =>
-      new Broker(brokerId, getHost(address), getPort(address), ConnectionType.getConnectionType(getConnectionType(address)))
+      new Broker(brokerId, getHost(address), getPort(address))
     }
   }
 
    /**
     * Creates a blocking channel to a random broker
     */
-   def channelToAnyBroker(zkClient: ZkClient, socketTimeoutMs: Int = 3000) : BlockingChannel = {
+   def channelToAnyBroker(zkClient: ZkClient, channelType: ChannelType = PlaintextChannelType, socketTimeoutMs: Int = 3000) : BlockingChannel = {
      var channel: BlockingChannel = null
      var connected = false
      while (!connected) {
        val allBrokers = getAllBrokersInCluster(zkClient)
        Random.shuffle(allBrokers).find { broker =>
-         trace("Connecting to broker %s:%d.".format(broker.host, broker.port))
-         try {
-           channel = new BlockingChannel(broker.host, broker.port, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs)
-           channel.connect()
-           debug("Created channel to broker %s:%d.".format(channel.host, channel.port))
-           true
-         } catch {
-           case e: Exception =>
-             if (channel != null) channel.disconnect()
-             channel = null
-             info("Error while creating channel to %s:%d.".format(broker.host, broker.port))
-             false
+         val channels = getBrokerChannels(zkClient, broker.id).filter(_.channelType == channelType)
+         if (channels.nonEmpty) {
+           val channelInfo = channels.head
+           trace("Connecting to broker %s:%d.".format(broker.host, channelInfo.port))
+           try {
+             channel = new BlockingChannel(broker.host, channelInfo.port, channelInfo.channelType, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs)
+             channel.connect()
+             debug("Created %s channel to broker %s:%d.".format(channelInfo.channelType.name, channel.host, channelInfo.port))
+             true
+           } catch {
+             case e: Exception =>
+               if (channel != null) channel.disconnect()
+               channel = null
+               info("Error while creating %s channel to %s:%d.".format(channelInfo.channelType.name, broker.host, channelInfo.port))
+               false
+           }
+         } else {
+           //TODO: maybe we should throw an exception here?
+           false
          }
        }
        connected = if (channel == null) false else true
@@ -136,8 +145,8 @@ object ClientUtils extends Logging{
    /**
     * Creates a blocking channel to the offset manager of the given group
     */
-   def channelToOffsetManager(group: String, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000) = {
-     var queryChannel = channelToAnyBroker(zkClient)
+   def channelToOffsetManager(group: String, channelType: ChannelType = PlaintextChannelType, zkClient: ZkClient, socketTimeoutMs: Int = 3000, retryBackOffMs: Int = 1000) = {
+     var queryChannel = channelToAnyBroker(zkClient, channelType)
 
      var offsetManagerChannelOpt: Option[BlockingChannel] = None
 
@@ -148,7 +157,7 @@ object ClientUtils extends Logging{
        while (!coordinatorOpt.isDefined) {
          try {
            if (!queryChannel.isConnected)
-             queryChannel = channelToAnyBroker(zkClient)
+             queryChannel = channelToAnyBroker(zkClient, channelType)
            debug("Querying %s:%d to locate offset manager for %s.".format(queryChannel.host, queryChannel.port, group))
            queryChannel.send(ConsumerMetadataRequest(group))
            val response = queryChannel.receive()
@@ -177,7 +186,7 @@ object ClientUtils extends Logging{
          var offsetManagerChannel: BlockingChannel = null
          try {
            debug("Connecting to offset manager %s.".format(connectString))
-           offsetManagerChannel = new BlockingChannel(coordinator.host, coordinator.port,
+           offsetManagerChannel = new BlockingChannel(coordinator.host, coordinator.port, channelType,
                                                       BlockingChannel.UseDefaultBufferSize,
                                                       BlockingChannel.UseDefaultBufferSize,
                                                       socketTimeoutMs)

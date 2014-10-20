@@ -21,7 +21,7 @@ import java.nio.channels.ServerSocketChannel
 
 class PlainSocketChannelFactory extends ChannelFactory {
 
-  protected def createSocket(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
+  protected def createChannel(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
     new KafkaChannel(serverSocketChannel.accept())
   }
 }

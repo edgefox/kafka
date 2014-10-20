@@ -6,7 +6,7 @@
  * (the "License"); you may not use this file except in compliance with
  * the License.  You may obtain a copy of the License at
  *
- *    http://www.apache.org/licenses/LICENSE-2.0
+ * http://www.apache.org/licenses/LICENSE-2.0
  *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
@@ -23,33 +23,34 @@ import kafka.utils.{nonthreadsafe, Logging}
 import kafka.api.RequestOrResponse
 
 
-object BlockingChannel{
+object BlockingChannel {
   val UseDefaultBufferSize = -1
 }
 
 /**
- *  A simple blocking channel with timeouts correctly enabled.
+ * A simple blocking channel with timeouts correctly enabled.
  *
  */
 @nonthreadsafe
-class BlockingChannel( val host: String, 
-                       val port: Int, 
-                       val readBufferSize: Int, 
-                       val writeBufferSize: Int, 
-                       val readTimeoutMs: Int ) extends Logging {
+class BlockingChannel(val host: String,
+                      val port: Int,
+                      val channelType: ChannelType,
+                      val readBufferSize: Int,
+                      val writeBufferSize: Int,
+                      val readTimeoutMs: Int) extends Logging {
   private var connected = false
   private var channel: SocketChannel = null
   private var readChannel: ReadableByteChannel = null
   private var writeChannel: GatheringByteChannel = null
   private val lock = new Object()
-  
-  def connect() = lock synchronized  {
-    if(!connected) {
+
+  def connect() = lock synchronized {
+    if (!connected) {
       try {
         channel = SocketChannel.open()
-        if(readBufferSize > 0)
+        if (readBufferSize > 0)
           channel.socket.setReceiveBufferSize(readBufferSize)
-        if(writeBufferSize > 0)
+        if (writeBufferSize > 0)
           channel.socket.setSendBufferSize(writeBufferSize)
         channel.configureBlocking(true)
         channel.socket.setSoTimeout(readTimeoutMs)
@@ -64,7 +65,7 @@ class BlockingChannel( val host: String,
         val msg = "Created socket with SO_TIMEOUT = %d (requested %d), SO_RCVBUF = %d (requested %d), SO_SNDBUF = %d (requested %d)."
         debug(msg.format(channel.socket.getSoTimeout,
                          readTimeoutMs,
-                         channel.socket.getReceiveBufferSize, 
+                         channel.socket.getReceiveBufferSize,
                          readBufferSize,
                          channel.socket.getSendBufferSize,
                          writeBufferSize))
@@ -73,9 +74,9 @@ class BlockingChannel( val host: String,
       }
     }
   }
-  
+
   def disconnect() = lock synchronized {
-    if(channel != null) {
+    if (channel != null) {
       swallow(channel.close())
       swallow(channel.socket.close())
       channel = null
@@ -83,7 +84,7 @@ class BlockingChannel( val host: String,
     }
     // closing the main socket channel *should* close the read channel
     // but let's do it to be sure.
-    if(readChannel != null) {
+    if (readChannel != null) {
       swallow(readChannel.close())
       readChannel = null
     }
@@ -92,16 +93,16 @@ class BlockingChannel( val host: String,
 
   def isConnected = connected
 
-  def send(request: RequestOrResponse):Int = {
-    if(!connected)
+  def send(request: RequestOrResponse): Int = {
+    if (!connected)
       throw new ClosedChannelException()
 
     val send = new BoundedByteBufferSend(request)
     send.writeCompletely(writeChannel)
   }
-  
+
   def receive(): Receive = {
-    if(!connected)
+    if (!connected)
       throw new ClosedChannelException()
 
     val response = new BoundedByteBufferReceive()

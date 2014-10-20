@@ -35,7 +35,7 @@ class SimpleConsumer(val host: String,
 
   ConsumerConfig.validateClientId(clientId)
   private val lock = new Object()
-  private val blockingChannel = new BlockingChannel(host, port, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout)
+  private val blockingChannel = new BlockingChannel(host, port, PlaintextChannelType, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout)
   val brokerInfo = "host_%s-port_%s".format(host, port)
   private val fetchRequestAndResponseStats = FetchRequestAndResponseStatsRegistry.getFetchRequestAndResponseStats(clientId)
   private var isClosed = false

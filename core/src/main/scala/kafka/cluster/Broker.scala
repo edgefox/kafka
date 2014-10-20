@@ -17,12 +17,12 @@
 
 package kafka.cluster
 
-import kafka.network.ConnectionType
-import kafka.utils.Utils._
-import kafka.utils.Json
-import kafka.api.ApiUtils._
 import java.nio.ByteBuffer
-import kafka.common.{KafkaException, BrokerNotAvailableException}
+
+import kafka.api.ApiUtils._
+import kafka.common.{BrokerNotAvailableException, KafkaException}
+import kafka.utils.Json
+import kafka.utils.Utils._
 import org.apache.kafka.common.utils.Utils._
 
 /**
@@ -39,8 +39,7 @@ object Broker {
           val brokerInfo = m.asInstanceOf[Map[String, Any]]
           val host = brokerInfo.get("host").get.asInstanceOf[String]
           val port = brokerInfo.get("port").get.asInstanceOf[Int]
-          val connectionType = brokerInfo.get("type").get.asInstanceOf[String]
-          new Broker(id, host, port, ConnectionType.getConnectionType(connectionType))
+          new Broker(id, host, port)
         case None =>
           throw new BrokerNotAvailableException("Broker id %d does not exist".format(id))
       }
@@ -53,34 +52,32 @@ object Broker {
     val id = buffer.getInt
     val host = readShortString(buffer)
     val port = buffer.getInt
-    val connectionType = readShortString(buffer)
-    new Broker(id, host, port, ConnectionType.getConnectionType(connectionType))
+    new Broker(id, host, port)
   }
 }
 
-case class Broker(id: Int, host: String, port: Int, connectionType: ConnectionType) {
+case class Broker(id: Int, host: String, port: Int) {
   
-  override def toString: String = "id:" + id + ",host:" + host + ",port:" + port + ",type:" + connectionType.name
+  override def toString: String = "id:" + id + ",host:" + host + ",port:" + port
 
-  def connectionString: String = formatAddress(host, port, connectionType.name)
+  def connectionString: String = formatAddress(host, port)
 
   def writeTo(buffer: ByteBuffer) {
     buffer.putInt(id)
     writeShortString(buffer, host)
     buffer.putInt(port)
-    writeShortString(buffer, connectionType.name)
   }
 
-  def sizeInBytes: Int = shortStringLength(host) /* host name */ + 4 /* port */ + 4 /* broker id*/ + shortStringLength(connectionType.name) /* connection type */
+  def sizeInBytes: Int = shortStringLength(host) /* host name */ + 4 /* port */ + 4 /* broker id*/
 
   override def equals(obj: Any): Boolean = {
     obj match {
       case null => false
-      case n: Broker => id == n.id && host == n.host && port == n.port && connectionType == n.connectionType
+      case n: Broker => id == n.id && host == n.host && port == n.port
       case _ => false
     }
   }
   
-  override def hashCode(): Int = hashcode(id, host, port, connectionType)
+  override def hashCode(): Int = hashcode(id, host, port)
   
 }

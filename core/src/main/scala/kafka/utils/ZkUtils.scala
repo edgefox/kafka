@@ -23,7 +23,7 @@ import kafka.cluster.{Broker, Cluster}
 import kafka.common.{KafkaException, NoEpochForPartitionException, TopicAndPartition}
 import kafka.consumer.{ConsumerThreadId, TopicCount}
 import kafka.controller.{KafkaController, LeaderIsrAndControllerEpoch, ReassignedPartitionsContext}
-import kafka.network.ConnectionType
+import kafka.network.{ChannelInfo, ChannelType}
 import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.{ZkBadVersionException, ZkMarshallingError, ZkNoNodeException, ZkNodeExistsException}
 import org.I0Itec.zkclient.serialize.ZkSerializer
@@ -34,6 +34,7 @@ import scala.collection._
 object ZkUtils extends Logging {
   val ConsumersPath = "/consumers"
   val BrokerIdsPath = "/brokers/ids"
+  val BrokerChannelsPath = "/brokers/channels"
   val BrokerTopicsPath = "/brokers/topics"
   val TopicConfigPath = "/config/topics"
   val TopicConfigChangesPath = "/config/changes"
@@ -154,11 +155,11 @@ object ZkUtils extends Logging {
     }
   }
 
-  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, connectionType: ConnectionType, timeout: Int, jmxPort: Int) {
+  def registerBrokerInZk(zkClient: ZkClient, id: Int, host: String, port: Int, timeout: Int, jmxPort: Int) {
     val brokerIdPath = ZkUtils.BrokerIdsPath + "/" + id
     val timestamp = SystemTime.milliseconds.toString
-    val brokerInfo = Json.encode(Map("version" -> 1, "host" -> host, "port" -> port, "jmx_port" -> jmxPort, "timestamp" -> timestamp, "type" -> connectionType.name))
-    val expectedBroker = new Broker(id, host, port, connectionType)
+    val brokerInfo = Json.encode(Map("version" -> 1, "host" -> host, "port" -> port, "jmx_port" -> jmxPort, "timestamp" -> timestamp))
+    val expectedBroker = new Broker(id, host, port)
 
     try {
       createEphemeralPathExpectConflictHandleZKBug(zkClient, brokerIdPath, brokerInfo, expectedBroker,
@@ -173,6 +174,24 @@ object ZkUtils extends Logging {
           + "timeout so it appears to be re-registering.")
     }
     info("Registered broker %d at path %s with address %s:%d.".format(id, brokerIdPath, host, port))
+  }
+
+  def registerBrokerChannelInZk(zkClient: ZkClient, brokerId: Int, port: Int, channelType: ChannelType, timeout: Int) {
+    val brokerChannelsIdPath = ZkUtils.BrokerChannelsPath + "/" + brokerId + "/" + channelType.name
+    val channelInfo = Json.encode(Map("version" -> 1, "brokerId" -> brokerId, "port" -> port, "type" -> channelType.name))
+    val expectedChannel = new ChannelInfo(brokerId, port, channelType)
+
+    try {
+      createEphemeralPathExpectConflictHandleZKBug(zkClient, brokerChannelsIdPath, channelInfo, expectedChannel,
+                                                   (channelString: String, channel: Any) => ChannelInfo.createChannelInfo(channel.asInstanceOf[ChannelInfo].brokerId, channelString).equals(channel.asInstanceOf[ChannelInfo]),
+                                                   timeout)
+
+    } catch {
+      case e: ZkNodeExistsException =>
+        //TODO: think of when could it happen
+        throw new RuntimeException("")
+    }
+    info("Registered channel of type %s for broker %d at path %s on port %d.".format(channelType.name, brokerId, brokerChannelsIdPath, port))
   }
 
   def deregisterBrokerInZk(zkClient: ZkClient, id: Int) {
@@ -685,6 +704,14 @@ object ZkUtils extends Logging {
       case Some(brokerInfo) => Some(Broker.createBroker(brokerId, brokerInfo))
       case None => None
     }
+  }
+
+  def getBrokerChannels(zkClient: ZkClient, brokerId: Int): Seq[ChannelInfo] = {
+    val channels = ZkUtils.getChildrenParentMayNotExist(zkClient, BrokerChannelsPath + "/" + brokerId)
+    if(channels == null)
+      Seq.empty[ChannelInfo]
+    else
+      channels.map { channel => ChannelInfo.createChannelInfo(brokerId, channel) }
   }
 
   def getAllTopics(zkClient: ZkClient): Seq[String] = {

@@ -17,24 +17,28 @@
 
 package kafka.server
 
-import kafka.network.ConnectionType
-import kafka.utils._
-import org.apache.zookeeper.Watcher.Event.KeeperState
-import org.I0Itec.zkclient.{IZkStateListener, ZkClient}
 import java.net.InetAddress
+
+import kafka.network.{ChannelInfo, PlaintextChannelType}
+import kafka.utils._
+import org.I0Itec.zkclient.{IZkStateListener, ZkClient}
+import org.apache.zookeeper.Watcher.Event.KeeperState
 
 
 /**
  * This class registers the broker in zookeeper to allow 
  * other brokers and consumers to detect failures. It uses an ephemeral znode with the path:
- *   /brokers/[0...N] --> advertisedHost:advertisedPorts
+ *   /brokers/[0...N] --> advertisedHost:advertisedPort
  *   
  * Right now our definition of health is fairly naive. If we register in zk we are healthy, otherwise
  * we are dead.
  */
 class KafkaHealthcheck(private val brokerId: Int, 
                        private val advertisedHost: String, 
-                       private val advertisedPorts: Map[Int, ConnectionType],
+                       private val advertisedPort: Int,
+                       private val channels: List[ChannelInfo] = List(new ChannelInfo(brokerId,
+                                                                                      advertisedPort,
+                                                                                      PlaintextChannelType)),
                        private val zkSessionTimeoutMs: Int,
                        private val zkClient: ZkClient) extends Logging {
 
@@ -61,8 +65,11 @@ class KafkaHealthcheck(private val brokerId: Int,
       else
         advertisedHost
     val jmxPort = System.getProperty("com.sun.management.jmxremote.port", "-1").toInt
-    advertisedPorts.foreach(entry => ZkUtils.registerBrokerInZk(zkClient, brokerId, advertisedHostName,
-                                                                entry._1, entry._2, zkSessionTimeoutMs, jmxPort))
+    ZkUtils.registerBrokerInZk(zkClient, brokerId, advertisedHostName, advertisedPort, zkSessionTimeoutMs, jmxPort)
+    channels.foreach(channelInfo =>
+                       ZkUtils.registerBrokerChannelInZk(zkClient,
+                                                         channelInfo.brokerId, channelInfo.port, channelInfo.channelType,
+                                                         zkSessionTimeoutMs))
   }
 
   /**
