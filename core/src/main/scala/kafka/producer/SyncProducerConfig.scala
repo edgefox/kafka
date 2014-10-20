@@ -18,6 +18,7 @@
 package kafka.producer
 
 import java.util.Properties
+import kafka.network.ChannelType
 import kafka.utils.VerifiableProperties
 
 class SyncProducerConfig private (val props: VerifiableProperties) extends SyncProducerConfigShared {
@@ -31,6 +32,9 @@ class SyncProducerConfig private (val props: VerifiableProperties) extends SyncP
 
   /** the port on which the broker is running */
   val port = props.getInt("port")
+
+  /** plaintext or SSL */
+  val channelType = ChannelType.getChannelType(props.getString("channel", "plaintext"))
 }
 
 trait SyncProducerConfigShared {

@@ -39,7 +39,7 @@ import scala.collection._
  */
 class SocketServer(val brokerId: Int,
                    val host: String,
-                   val ports: Map[Int, ChannelFactory],
+                   val ports: Map[Int, ChannelType],
                    val numProcessorThreads: Int,
                    val maxQueuedRequests: Int,
                    val sendBufferSize: Int,
@@ -72,7 +72,7 @@ class SocketServer(val brokerId: Int,
            maxConnectionsPerIpOverrides: Map[String, Int] = Map.empty[String, Int]) {
     this(brokerId,
          host,
-         Map(port -> new PlainSocketChannelFactory()),
+         Map(port -> PlaintextChannelType),
          numProcessorThreads,
          maxQueuedRequests,
          sendBufferSize,
@@ -222,7 +222,7 @@ private[kafka] abstract class AbstractServerThread(connectionQuotas: ConnectionQ
  * Thread that accepts and configures new connections. There is only need for one of these
  */
 private[kafka] class Acceptor(val host: String, 
-                              val ports: Map[Int, ChannelFactory],
+                              val ports: Map[Int, ChannelType],
                               private val processors: Array[Processor],
                               val sendBufferSize: Int, 
                               val recvBufferSize: Int,
@@ -233,10 +233,10 @@ private[kafka] class Acceptor(val host: String,
    * Accept loop that checks for new connection attempts
    */
   def run() {
-    for ((port, channelFactory) <- ports) {
+    for ((port, channelType) <- ports) {
       val serverChannel = openServerSocket(host, port)
       serverChannel.register(selector, SelectionKey.OP_ACCEPT)
-      channelToFactory += serverChannel -> channelFactory
+      channelToFactory += serverChannel -> channelType.factory
     }
 
     startupComplete()
@@ -300,7 +300,7 @@ private[kafka] class Acceptor(val host: String,
     var socketChannel: Option[KafkaChannel] = None
     try {
       val channelFactory = channelToFactory(serverSocketChannel)
-      socketChannel = Some(channelFactory.create(serverSocketChannel, recvBufferSize, sendBufferSize))
+      socketChannel = Some(channelFactory.createServerChannel(serverSocketChannel, recvBufferSize, sendBufferSize))
       connectionQuotas.inc(socketChannel.get.socket().getInetAddress)
       processor.accept(socketChannel.get)
     } catch {

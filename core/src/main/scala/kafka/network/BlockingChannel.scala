@@ -47,15 +47,7 @@ class BlockingChannel(val host: String,
   def connect() = lock synchronized {
     if (!connected) {
       try {
-        channel = SocketChannel.open()
-        if (readBufferSize > 0)
-          channel.socket.setReceiveBufferSize(readBufferSize)
-        if (writeBufferSize > 0)
-          channel.socket.setSendBufferSize(writeBufferSize)
-        channel.configureBlocking(true)
-        channel.socket.setSoTimeout(readTimeoutMs)
-        channel.socket.setKeepAlive(true)
-        channel.socket.setTcpNoDelay(true)
+        channel = channelType.factory.createClientChannel(host, port, readBufferSize, writeBufferSize, readTimeoutMs)
         channel.connect(new InetSocketAddress(host, port))
 
         writeChannel = channel

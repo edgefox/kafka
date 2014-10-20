@@ -19,6 +19,7 @@ package kafka.tools
 
 import kafka.common._
 import kafka.message._
+import kafka.network.ChannelType
 import kafka.serializer._
 import kafka.utils.{ToolsUtils, CommandLineUtils}
 import kafka.producer.{NewShinyProducer,OldProducer,KeyedMessage}
@@ -63,6 +64,7 @@ object ConsoleProducer {
             new NewShinyProducer(props)
           } else {
             props.put("metadata.broker.list", config.brokerList)
+            props.put("channel", config.channelType.name)
             props.put("compression.codec", config.compressionCodec)
             props.put("producer.type", if(config.sync) "sync" else "async")
             props.put("batch.num.messages", config.batchSize.toString)
@@ -111,6 +113,11 @@ object ConsoleProducer {
     val brokerListOpt = parser.accepts("broker-list", "REQUIRED: The broker list string in the form HOST1:PORT1,HOST2:PORT2.")
       .withRequiredArg
       .describedAs("broker-list")
+      .ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL")
+      .withRequiredArg()
+      .describedAs("channel")
+      .defaultsTo("plaintext")
       .ofType(classOf[String])
     val syncOpt = parser.accepts("sync", "If set message send requests to the brokers are synchronously, one at a time as they arrive.")
     val compressionCodecOpt = parser.accepts("compression-codec", "The compression codec: either 'gzip' or 'snappy'." +
@@ -221,6 +228,7 @@ object ConsoleProducer {
     val topic = options.valueOf(topicOpt)
     val brokerList = options.valueOf(brokerListOpt)
     ToolsUtils.validatePortOrDie(parser,brokerList)
+    val channelType = ChannelType.getChannelType(options.valueOf(channelTypeOpt))
     val sync = options.has(syncOpt)
     val compressionCodecOptionValue = options.valueOf(compressionCodecOpt)
     val compressionCodec = if (options.has(compressionCodecOpt))

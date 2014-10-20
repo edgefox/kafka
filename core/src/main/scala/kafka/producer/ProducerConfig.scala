@@ -17,11 +17,12 @@
 
 package kafka.producer
 
-import async.AsyncProducerConfig
 import java.util.Properties
+
+import kafka.common.{Config, InvalidConfigException}
+import kafka.message.NoCompressionCodec
+import kafka.producer.async.AsyncProducerConfig
 import kafka.utils.{Utils, VerifiableProperties}
-import kafka.message.{CompressionCodec, NoCompressionCodec}
-import kafka.common.{InvalidConfigException, Config}
 
 object ProducerConfig extends Config {
   def validate(config: ProducerConfig) {
@@ -50,7 +51,7 @@ object ProducerConfig extends Config {
 
 class ProducerConfig private (val props: VerifiableProperties)
         extends AsyncProducerConfig with SyncProducerConfigShared {
-  import ProducerConfig._
+  import kafka.producer.ProducerConfig._
 
   def this(originalProps: Properties) {
     this(new VerifiableProperties(originalProps))
@@ -67,6 +68,9 @@ class ProducerConfig private (val props: VerifiableProperties)
 
   /** the partitioner class for partitioning events amongst sub-topics */
   val partitionerClass = props.getString("partitioner.class", "kafka.producer.DefaultPartitioner")
+
+  /* SSL or plaintext */
+  val channelType = props.getString("channel", "plaintext")
 
   /** this parameter specifies whether the messages are sent asynchronously *
    * or not. Valid values are - async for asynchronous send                 *

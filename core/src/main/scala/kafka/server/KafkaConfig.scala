@@ -21,7 +21,11 @@ import java.util.Properties
 
 import kafka.consumer.ConsumerConfig
 import kafka.message.{Message, MessageSet}
+import kafka.network.ChannelType
+import kafka.network.ssl.SSLConnectionConfig
 import kafka.utils.{Utils, VerifiableProperties, ZKConfig}
+
+import scala.collection.{mutable, Map}
 
 /**
  * Configuration settings for the kafka server
@@ -323,5 +327,19 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
 
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
-  
+
+  val portsToChannelTypes: Map[Int, ChannelType] = {
+    val portToChannelType = mutable.Map.empty[Int, ChannelType]
+    if (port > 0) {
+      portToChannelType += port -> ChannelType.getChannelType("plaintext")
+    }
+    if (sslEnabled) {
+      val sslConfig = SSLConnectionConfig.server
+      portToChannelType += sslConfig.port -> ChannelType.getChannelType("ssl")
+    }
+
+    if (portToChannelType.isEmpty) portToChannelType += 9092 -> ChannelType.getChannelType("plaintext")
+
+    portToChannelType.toMap
+  }  
 }

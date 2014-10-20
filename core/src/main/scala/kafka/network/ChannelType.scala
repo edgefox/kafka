@@ -1,5 +1,7 @@
 package kafka.network
 
+import kafka.network.ssl.SSLChannelFactory
+
 object ChannelType {
   def getChannelType(name: String): ChannelType = {
     name.toLowerCase match {
@@ -12,13 +14,15 @@ object ChannelType {
   def available() = Set(PlaintextChannelType, SSLChannelType)
 }
 
-sealed trait ChannelType { def name: String }
+sealed trait ChannelType { def name: String; def factory: ChannelFactory }
 
 
 case object PlaintextChannelType extends ChannelType {
   val name = "plaintext"
+  override val factory = PlainSocketChannelFactory
 }
 
 case object SSLChannelType extends ChannelType {
   val name = "ssl"
+  override val factory = SSLChannelFactory
 }

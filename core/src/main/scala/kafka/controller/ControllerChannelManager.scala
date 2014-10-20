@@ -16,19 +16,17 @@
 */
 package kafka.controller
 
-import kafka.network.{Receive, BlockingChannel}
-import kafka.utils.{Utils, Logging, ShutdownableThread}
-import collection.mutable.HashMap
+import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue}
+
+import kafka.api.{RequestOrResponse, _}
 import kafka.cluster.Broker
-import java.util.concurrent.{LinkedBlockingQueue, BlockingQueue}
-import kafka.server.KafkaConfig
-import collection.mutable
-import kafka.api._
-import org.apache.log4j.Logger
-import scala.Some
 import kafka.common.TopicAndPartition
-import kafka.api.RequestOrResponse
-import collection.Set
+import kafka.network.{BlockingChannel, Receive}
+import kafka.server.KafkaConfig
+import kafka.utils.{Logging, ShutdownableThread, Utils}
+
+import scala.collection.{Set, mutable}
+import scala.collection.mutable.HashMap
 
 class ControllerChannelManager (private val controllerContext: ControllerContext, config: KafkaConfig) extends Logging {
   private val brokerStateInfo = new HashMap[Int, ControllerBrokerStateInfo]
@@ -80,10 +78,12 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
   private def addNewBroker(broker: Broker) {
     val messageQueue = new LinkedBlockingQueue[(RequestOrResponse, (RequestOrResponse) => Unit)](config.controllerMessageQueueSize)
     debug("Controller %d trying to connect to broker %d".format(config.brokerId,broker.id))
-    val channel = new BlockingChannel(broker.host, broker.port,
-      BlockingChannel.UseDefaultBufferSize,
-      BlockingChannel.UseDefaultBufferSize,
-      config.controllerSocketTimeoutMs)
+    val channel = new BlockingChannel(broker.host,
+                                      config.portsToChannelTypes.head._1,
+                                      config.portsToChannelTypes.head._2,
+                                      BlockingChannel.UseDefaultBufferSize,
+                                      BlockingChannel.UseDefaultBufferSize,
+                                      config.controllerSocketTimeoutMs)
     val requestThread = new RequestSendThread(config.brokerId, controllerContext, broker, messageQueue, channel)
     requestThread.setDaemon(false)
     brokerStateInfo.put(broker.id, new ControllerBrokerStateInfo(channel, broker, messageQueue, requestThread))

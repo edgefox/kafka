@@ -29,12 +29,11 @@ import kafka.common.ErrorMapping
 import kafka.controller.{ControllerStats, KafkaController}
 import kafka.log.{CleanerConfig, LogConfig, LogManager}
 import kafka.metrics.KafkaMetricsGroup
-import kafka.network.ssl.{SSLChannelFactory, SSLConnectionConfig, SSLAuth}
 import kafka.network._
 import kafka.utils._
 import org.I0Itec.zkclient.ZkClient
 
-import scala.collection.{Map, mutable}
+import scala.collection.Map
 
 /**
  * Represents the lifecycle of a single Kafka broker. Handles all functionality required
@@ -89,7 +88,7 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
 
       socketServer = new SocketServer(config.brokerId,
                                       config.hostName,
-                                      portsToChannelFactories,
+                                      config.portsToChannelTypes,
                                       config.numNetworkThreads,
                                       config.queuedMaxRequests,
                                       config.socketSendBufferBytes,
@@ -122,7 +121,9 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
       topicConfigManager.startup()
     
       /* tell everyone we are alive */
-      kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, config.advertisedHostName, config.advertisedPort, config.zkSessionTimeoutMs, zkClient)
+      kafkaHealthcheck = new KafkaHealthcheck(config.brokerId, config.advertisedHostName, config.advertisedPort,
+                                              config.portsToChannelTypes.map(entry => new ChannelInfo(config.brokerId, entry._1, entry._2)).toList,
+                                              config.zkSessionTimeoutMs, zkClient)
       kafkaHealthcheck.startup()
 
     
@@ -136,22 +137,6 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
         shutdown()
         throw e
     }
-  }
-  
-  def portsToChannelFactories: Map[Int, ChannelFactory] = {
-    val portToChannelFactory = mutable.Map.empty[Int, ChannelFactory]
-    if (config.port > 0) {
-      portToChannelFactory += config.port -> new PlainSocketChannelFactory()
-    }
-    if (config.sslEnabled) {
-      val sslConfig = SSLConnectionConfig.server
-      SSLAuth.initialize(sslConfig)
-      portToChannelFactory += sslConfig.port -> new SSLChannelFactory(sslConfig.wantClientAuth, sslConfig.needClientAuth)
-    }
-
-    if (portToChannelFactory.isEmpty) portToChannelFactory += 9092 -> new PlainSocketChannelFactory()
-
-    portToChannelFactory.toMap
   }
 
   private def initZk(): ZkClient = {
@@ -218,11 +203,16 @@ class KafkaServer(val config: KafkaConfig, time: Time = SystemTime) extends Logg
                 if (channel != null) {
                   channel.disconnect()
                 }
-                channel = new BlockingChannel(broker.host, broker.port,
-                  BlockingChannel.UseDefaultBufferSize,
-                  BlockingChannel.UseDefaultBufferSize,
-                  config.controllerSocketTimeoutMs)
-                channel.connect()
+                //TODO: maybe one is enough?
+                for ((port, channelType) <- config.portsToChannelTypes) {
+                  channel = new BlockingChannel(broker.host,
+                                                port,
+                                                channelType,
+                                                BlockingChannel.UseDefaultBufferSize,
+                                                BlockingChannel.UseDefaultBufferSize,
+                                                config.controllerSocketTimeoutMs)
+                  channel.connect()
+                }
                 prevController = broker
               }
             case None=>

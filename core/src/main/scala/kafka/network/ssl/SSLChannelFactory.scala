@@ -17,15 +17,33 @@
 
 package kafka.network.ssl
 
-import java.nio.channels.ServerSocketChannel
+import java.nio.channels.{SocketChannel, ServerSocketChannel}
 
 import kafka.network.{ChannelFactory, KafkaChannel}
 
-class SSLChannelFactory(wantClientAuth: Boolean,
-                        needClientAuth: Boolean) extends ChannelFactory {
-  protected def createChannel(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
+object SSLChannelFactory extends ChannelFactory {
+  private val config = SSLConnectionConfig.server
+  SSLAuth.initialize(config)
+  
+  protected def createServerChannelImpl(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
     SSLSocketChannel.makeSecureServerConnection(serverSocketChannel.accept(),
-                                                wantClientAuth,
-                                                needClientAuth)
+                                                config.wantClientAuth,
+                                                config.needClientAuth)
+  }
+
+  protected def createClientChannelImpl(host: String, port: Int): SocketChannel = {
+    SSLSocketChannel.makeSecureClientConnection(SocketChannel.open(), host, port)
+  }
+
+  override protected def configureClientChannel(channel: SocketChannel, readBufferSize: Int, writeBufferSize: Int, readTimeoutMs: Int): Unit = {
+    val secureChannel = channel.asInstanceOf[SSLSocketChannel]
+    if (readBufferSize > 0)
+      secureChannel.socket.setReceiveBufferSize(readBufferSize)
+    if (writeBufferSize > 0)
+      secureChannel.socket.setSendBufferSize(writeBufferSize)
+    secureChannel.simulateBlocking(true)
+    secureChannel.socket.setSoTimeout(readTimeoutMs)
+    secureChannel.socket.setKeepAlive(true)
+    secureChannel.socket.setTcpNoDelay(true)
   }
 }

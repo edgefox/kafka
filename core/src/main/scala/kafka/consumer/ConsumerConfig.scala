@@ -19,6 +19,7 @@ package kafka.consumer
 
 import java.util.Properties
 import kafka.api.OffsetRequest
+import kafka.network.ChannelType
 import kafka.utils._
 import kafka.common.{InvalidConfigException, Config}
 
@@ -180,6 +181,9 @@ class ConsumerConfig private (val props: VerifiableProperties) extends ZKConfig(
 
   /** Select a strategy for assigning partitions to consumer streams. Possible values: range, roundrobin */
   val partitionAssignmentStrategy = props.getString("partition.assignment.strategy", DefaultPartitionAssignmentStrategy)
+
+  /* plaintext or SSL */
+  val channelType = ChannelType.getChannelType(props.getString("channel", "plaintext"))
   
   validate(this)
 }

@@ -19,7 +19,7 @@ package kafka.server
 
 import java.net.InetAddress
 
-import kafka.network.{ChannelInfo, PlaintextChannelType}
+import kafka.network.ChannelInfo
 import kafka.utils._
 import org.I0Itec.zkclient.{IZkStateListener, ZkClient}
 import org.apache.zookeeper.Watcher.Event.KeeperState
@@ -36,9 +36,7 @@ import org.apache.zookeeper.Watcher.Event.KeeperState
 class KafkaHealthcheck(private val brokerId: Int, 
                        private val advertisedHost: String, 
                        private val advertisedPort: Int,
-                       private val channels: List[ChannelInfo] = List(new ChannelInfo(brokerId,
-                                                                                      advertisedPort,
-                                                                                      PlaintextChannelType)),
+                       private val channels: List[ChannelInfo],
                        private val zkSessionTimeoutMs: Int,
                        private val zkClient: ZkClient) extends Logging {
 

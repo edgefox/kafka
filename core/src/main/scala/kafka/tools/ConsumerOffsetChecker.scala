@@ -19,17 +19,16 @@ package kafka.tools
 
 
 import joptsimple._
-import org.I0Itec.zkclient.ZkClient
-import kafka.utils._
-import kafka.consumer.SimpleConsumer
-import kafka.api.{OffsetFetchResponse, OffsetFetchRequest, OffsetRequest}
-import kafka.common.{OffsetMetadataAndError, ErrorMapping, BrokerNotAvailableException, TopicAndPartition}
-import scala.collection._
+import kafka.api.{OffsetFetchRequest, OffsetFetchResponse, OffsetRequest, PartitionOffsetRequestInfo}
 import kafka.client.ClientUtils
-import kafka.network.BlockingChannel
-import kafka.api.PartitionOffsetRequestInfo
-import scala.Some
+import kafka.common.{BrokerNotAvailableException, ErrorMapping, OffsetMetadataAndError, TopicAndPartition}
+import kafka.consumer.SimpleConsumer
+import kafka.network.{BlockingChannel, ChannelType}
+import kafka.utils._
+import org.I0Itec.zkclient.ZkClient
 import org.I0Itec.zkclient.exception.ZkNoNodeException
+
+import scala.collection._
 
 object ConsumerOffsetChecker extends Logging {
 
@@ -111,6 +110,8 @@ object ConsumerOffsetChecker extends Logging {
 
     val zkConnectOpt = parser.accepts("zookeeper", "ZooKeeper connect string.").
             withRequiredArg().defaultsTo("localhost:2181").ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.").
+      withRequiredArg().defaultsTo("plaintext").ofType(classOf[String])
     val topicsOpt = parser.accepts("topic",
             "Comma-separated list of consumer topics (all topics if absent).").
             withRequiredArg().ofType(classOf[String])
@@ -137,6 +138,7 @@ object ConsumerOffsetChecker extends Logging {
     CommandLineUtils.checkRequiredArgs(parser, options, groupOpt, zkConnectOpt)
 
     val zkConnect = options.valueOf(zkConnectOpt)
+    val channelType = options.valueOf(channelTypeOpt)
 
     val group = options.valueOf(groupOpt)
     val groupDirs = new ZKGroupDirs(group)
@@ -158,7 +160,7 @@ object ConsumerOffsetChecker extends Logging {
 
       topicPidMap = immutable.Map(ZkUtils.getPartitionsForTopics(zkClient, topicList).toSeq:_*)
       val topicPartitions = topicPidMap.flatMap { case(topic, partitionSeq) => partitionSeq.map(TopicAndPartition(topic, _)) }.toSeq
-      val channel = ClientUtils.channelToOffsetManager(group, zkClient, channelSocketTimeoutMs, channelRetryBackoffMs)
+      val channel = ClientUtils.channelToOffsetManager(group, ChannelType.getChannelType(channelType), zkClient, channelSocketTimeoutMs, channelRetryBackoffMs)
 
       debug("Sending offset fetch request to coordinator %s:%d.".format(channel.host, channel.port))
       channel.send(OffsetFetchRequest(group, topicPartitions))

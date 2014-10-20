@@ -17,11 +17,15 @@
 
 package kafka.network
 
-import java.nio.channels.ServerSocketChannel
+import java.nio.channels.{SocketChannel, ServerSocketChannel}
 
-class PlainSocketChannelFactory extends ChannelFactory {
+object PlainSocketChannelFactory extends ChannelFactory {
 
-  protected def createChannel(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
+  protected def createServerChannelImpl(serverSocketChannel: ServerSocketChannel): KafkaChannel = {
     new KafkaChannel(serverSocketChannel.accept())
+  }
+
+  protected def createClientChannelImpl(host: String, port: Int): SocketChannel = {
+    SocketChannel.open()
   }
 }
