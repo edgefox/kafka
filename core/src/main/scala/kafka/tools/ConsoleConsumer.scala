@@ -41,6 +41,10 @@ object ConsoleConsumer extends Logging {
             .withRequiredArg
             .describedAs("topic")
             .ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.")
+      .withRequiredArg
+      .describedAs("channel")
+      .ofType(classOf[String])
     val whitelistOpt = parser.accepts("whitelist", "Whitelist of topics to include for consumption.")
             .withRequiredArg
             .describedAs("whitelist")
@@ -94,6 +98,7 @@ object ConsoleConsumer extends Logging {
     if (topicOrFilterOpt.size != 1)
       CommandLineUtils.printUsageAndDie(parser, "Exactly one of whitelist/blacklist/topic is required.")
     val topicArg = options.valueOf(topicOrFilterOpt.head)
+    val channelType = options.valueOf(channelTypeOpt)
     val filterSpec = if (options.has(blacklistOpt))
       new Blacklist(topicArg)
     else
@@ -137,6 +142,8 @@ object ConsoleConsumer extends Logging {
         +". Please use --delete-consumer-offsets to delete previous offsets metadata")
       System.exit(1)
     }
+
+    consumerProps.put("channel", channelType)
 
     if(options.has(deleteConsumerOffsetsOpt))
       ZkUtils.maybeDeletePath(options.valueOf(zkConnectOpt), "/consumers/" + consumerProps.getProperty("group.id"))
