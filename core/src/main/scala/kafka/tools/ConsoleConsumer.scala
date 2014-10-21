@@ -43,6 +43,7 @@ object ConsoleConsumer extends Logging {
             .ofType(classOf[String])
     val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.")
       .withRequiredArg
+      .defaultsTo("plaintext")
       .describedAs("channel")
       .ofType(classOf[String])
     val whitelistOpt = parser.accepts("whitelist", "Whitelist of topics to include for consumption.")

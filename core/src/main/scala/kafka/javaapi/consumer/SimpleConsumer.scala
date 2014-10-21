@@ -17,6 +17,7 @@
 
 package kafka.javaapi.consumer
 
+import kafka.network.ChannelType
 import kafka.utils.threadsafe
 import kafka.javaapi.FetchResponse
 import kafka.javaapi.OffsetRequest
@@ -27,11 +28,12 @@ import kafka.javaapi.OffsetRequest
 @threadsafe
 class SimpleConsumer(val host: String,
                      val port: Int,
+                     val channelType: ChannelType,
                      val soTimeout: Int,
                      val bufferSize: Int,
                      val clientId: String) {
 
-  private val underlying = new kafka.consumer.SimpleConsumer(host, port, soTimeout, bufferSize, clientId)
+  private val underlying = new kafka.consumer.SimpleConsumer(host, port, channelType, soTimeout, bufferSize, clientId)
 
   /**
    *  Fetch a set of messages from a topic. This version of the fetch method

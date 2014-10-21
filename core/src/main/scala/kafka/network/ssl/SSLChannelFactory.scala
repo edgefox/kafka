@@ -36,12 +36,13 @@ object SSLChannelFactory extends ChannelFactory {
   }
 
   override protected def configureClientChannel(channel: SocketChannel, readBufferSize: Int, writeBufferSize: Int, readTimeoutMs: Int): Unit = {
+    info("Configuring secure client channel")
     val secureChannel = channel.asInstanceOf[SSLSocketChannel]
     if (readBufferSize > 0)
       secureChannel.socket.setReceiveBufferSize(readBufferSize)
     if (writeBufferSize > 0)
       secureChannel.socket.setSendBufferSize(writeBufferSize)
-    secureChannel.simulateBlocking(true)
+    secureChannel.simulateBlocking(b = true)
     secureChannel.socket.setSoTimeout(readTimeoutMs)
     secureChannel.socket.setKeepAlive(true)
     secureChannel.socket.setTcpNoDelay(true)

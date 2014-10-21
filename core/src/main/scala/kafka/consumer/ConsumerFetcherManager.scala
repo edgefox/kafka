@@ -65,6 +65,7 @@ class ConsumerFetcherManager(private val consumerIdString: String,
         val brokers = getAllBrokersInCluster(zkClient)
         val topicsMetadata = ClientUtils.fetchTopicMetadata(noLeaderPartitionSet.map(m => m.topic).toSet,
                                                             brokers,
+                                                            config.channelType,
                                                             config.clientId,
                                                             config.socketTimeoutMs,
                                                             correlationId.getAndIncrement).topicsMetadata

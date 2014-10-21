@@ -29,13 +29,14 @@ import org.apache.kafka.common.utils.Utils._
 @threadsafe
 class SimpleConsumer(val host: String,
                      val port: Int,
+                     val channelType: ChannelType,
                      val soTimeout: Int,
                      val bufferSize: Int,
                      val clientId: String) extends Logging {
 
   ConsumerConfig.validateClientId(clientId)
   private val lock = new Object()
-  private val blockingChannel = new BlockingChannel(host, port, PlaintextChannelType, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout)
+  private val blockingChannel = new BlockingChannel(host, port, channelType, bufferSize, BlockingChannel.UseDefaultBufferSize, soTimeout)
   val brokerInfo = "host_%s-port_%s".format(host, port)
   private val fetchRequestAndResponseStats = FetchRequestAndResponseStatsRegistry.getFetchRequestAndResponseStats(clientId)
   private var isClosed = false

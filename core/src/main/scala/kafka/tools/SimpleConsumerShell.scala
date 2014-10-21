@@ -18,6 +18,7 @@
 package kafka.tools
 
 import joptsimple._
+import kafka.network.ChannelType
 import kafka.utils._
 import kafka.consumer._
 import kafka.client.ClientUtils
@@ -40,6 +41,11 @@ object SimpleConsumerShell extends Logging {
                            .withRequiredArg
                            .describedAs("hostname:port,...,hostname:port")
                            .ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.")
+      .withRequiredArg
+      .defaultsTo("plaintext")
+      .describedAs("ssl, plaintext")
+      .ofType(classOf[String])
     val topicOpt = parser.accepts("topic", "REQUIRED: The topic to consume from.")
                            .withRequiredArg
                            .describedAs("topic")
@@ -127,7 +133,8 @@ object SimpleConsumerShell extends Logging {
     val brokerList = options.valueOf(brokerListOpt)
     ToolsUtils.validatePortOrDie(parser,brokerList)
     val metadataTargetBrokers = ClientUtils.parseBrokerList(brokerList)
-    val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, clientId, maxWaitMs).topicsMetadata
+    val channelType = ChannelType.getChannelType(options.valueOf(channelTypeOpt))
+    val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, channelType, clientId, maxWaitMs).topicsMetadata
     if(topicsMetadata.size != 1 || !topicsMetadata(0).topic.equals(topic)) {
       System.err.println(("Error: no valid topic metadata for topic: %s, " + "what we get from server is only: %s").format(topic, topicsMetadata))
       System.exit(1)
@@ -167,7 +174,7 @@ object SimpleConsumerShell extends Logging {
       System.exit(1)
     }
     if (startingOffset < 0) {
-      val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, ConsumerConfig.SocketTimeout,
+      val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, channelType, ConsumerConfig.SocketTimeout,
                                               ConsumerConfig.SocketBufferSize, clientId)
       try {
         startingOffset = simpleConsumer.earliestOrLatestOffset(TopicAndPartition(topic, partitionId), startingOffset,
@@ -189,7 +196,7 @@ object SimpleConsumerShell extends Logging {
     val replicaString = if(replicaId > 0) "leader" else "replica"
     info("Starting simple consumer shell to partition [%s, %d], %s [%d], host and port: [%s, %d], from offset [%d]"
                  .format(topic, partitionId, replicaString, replicaId, fetchTargetBroker.host, fetchTargetBroker.port, startingOffset))
-    val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, 10000, 64*1024, clientId)
+    val simpleConsumer = new SimpleConsumer(fetchTargetBroker.host, fetchTargetBroker.port, channelType, 10000, 64*1024, clientId)
     val thread = Utils.newThread("kafka-simpleconsumer-shell", new Runnable() {
       def run() {
         var offset = startingOffset

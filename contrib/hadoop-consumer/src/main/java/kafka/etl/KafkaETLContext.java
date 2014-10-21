@@ -33,6 +33,7 @@ import kafka.javaapi.OffsetRequest;
 import kafka.javaapi.consumer.SimpleConsumer;
 import kafka.javaapi.message.ByteBufferMessageSet;
 import kafka.message.MessageAndOffset;
+import kafka.network.PlaintextChannelType$;
 import org.apache.hadoop.io.BytesWritable;
 import org.apache.hadoop.mapred.JobConf;
 import org.apache.hadoop.mapred.OutputCollector;
@@ -109,7 +110,7 @@ public class KafkaETLContext {
         
         // read data from queue
         URI uri = _request.getURI();
-        _consumer = new SimpleConsumer(uri.getHost(), uri.getPort(), _timeout, _bufferSize, "KafkaETLContext");
+        _consumer = new SimpleConsumer(uri.getHost(), uri.getPort(), PlaintextChannelType$.MODULE$, _timeout, _bufferSize, "KafkaETLContext");
         
         // get available offset range
         _offsetRange = getOffsetRange();

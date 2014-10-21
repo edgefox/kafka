@@ -47,11 +47,12 @@ class BlockingChannel(val host: String,
   def connect() = lock synchronized {
     if (!connected) {
       try {
+        warn("Trying to connect to %s:%d via %s channel".format(host, port, channelType.name))
         channel = channelType.factory.createClientChannel(host, port, readBufferSize, writeBufferSize, readTimeoutMs)
         channel.connect(new InetSocketAddress(host, port))
 
         writeChannel = channel
-        readChannel = Channels.newChannel(channel.socket().getInputStream)
+        readChannel = Channels.newChannel(Channels.newInputStream(channel))
         connected = true
         // settings may not match what we requested above
         val msg = "Created socket with SO_TIMEOUT = %d (requested %d), SO_RCVBUF = %d (requested %d), SO_SNDBUF = %d (requested %d)."
@@ -62,7 +63,10 @@ class BlockingChannel(val host: String,
                          channel.socket.getSendBufferSize,
                          writeBufferSize))
       } catch {
-        case e: Throwable => disconnect()
+        case e: Throwable => {
+          warn(e)
+          disconnect()
+        }
       }
     }
   }

@@ -23,6 +23,7 @@ import joptsimple._
 import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
 import kafka.common.TopicAndPartition
 import kafka.client.ClientUtils
+import kafka.network.ChannelType
 import kafka.utils.{ToolsUtils, CommandLineUtils}
 
 
@@ -34,6 +35,11 @@ object GetOffsetShell {
                            .withRequiredArg
                            .describedAs("hostname:port,...,hostname:port")
                            .ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.")
+      .withRequiredArg
+      .defaultsTo("plaintext")
+      .describedAs("ssl, plaintext")
+      .ofType(classOf[String])
     val topicOpt = parser.accepts("topic", "REQUIRED: The topic to get offset from.")
                            .withRequiredArg
                            .describedAs("topic")
@@ -69,13 +75,14 @@ object GetOffsetShell {
     val brokerList = options.valueOf(brokerListOpt)
     ToolsUtils.validatePortOrDie(parser, brokerList)
     val metadataTargetBrokers = ClientUtils.parseBrokerList(brokerList)
+    val channelType = options.valueOf(channelTypeOpt)
     val topic = options.valueOf(topicOpt)
     var partitionList = options.valueOf(partitionOpt)
     var time = options.valueOf(timeOpt).longValue
     val nOffsets = options.valueOf(nOffsetsOpt).intValue
     val maxWaitMs = options.valueOf(maxWaitMsOpt).intValue()
 
-    val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, clientId, maxWaitMs).topicsMetadata
+    val topicsMetadata = ClientUtils.fetchTopicMetadata(Set(topic), metadataTargetBrokers, ChannelType.getChannelType(channelType), clientId, maxWaitMs).topicsMetadata
     if(topicsMetadata.size != 1 || !topicsMetadata(0).topic.equals(topic)) {
       System.err.println(("Error: no valid topic metadata for topic: %s, " + " probably the topic does not exist, run ").format(topic) +
         "kafka-list-topic.sh to verify")
@@ -93,7 +100,7 @@ object GetOffsetShell {
         case Some(metadata) =>
           metadata.leader match {
             case Some(leader) =>
-              val consumer = new SimpleConsumer(leader.host, leader.port, 10000, 100000, clientId)
+              val consumer = new SimpleConsumer(leader.host, leader.port, ChannelType.getChannelType(channelType), 10000, 100000, clientId)
               val topicAndPartition = TopicAndPartition(topic, partitionId)
               val request = OffsetRequest(Map(topicAndPartition -> PartitionOffsetRequestInfo(time, nOffsets)))
               val offsets = consumer.getOffsetsBefore(request).partitionErrorAndOffsets(topicAndPartition).offsets

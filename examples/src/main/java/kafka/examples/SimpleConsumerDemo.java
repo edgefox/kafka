@@ -27,6 +27,9 @@ import java.util.List;
 import kafka.javaapi.consumer.SimpleConsumer;
 import kafka.javaapi.message.ByteBufferMessageSet;
 import kafka.message.MessageAndOffset;
+import kafka.network.PlaintextChannelType;
+import kafka.network.PlaintextChannelType$;
+
 import java.util.HashMap;
 import java.util.Map;
 
@@ -58,6 +61,7 @@ public class SimpleConsumerDemo {
       
     SimpleConsumer simpleConsumer = new SimpleConsumer(KafkaProperties.kafkaServerURL,
                                                        KafkaProperties.kafkaServerPort,
+                                                       PlaintextChannelType$.MODULE$,
                                                        KafkaProperties.connectionTimeOut,
                                                        KafkaProperties.kafkaProducerBufferSize,
                                                        KafkaProperties.clientId);

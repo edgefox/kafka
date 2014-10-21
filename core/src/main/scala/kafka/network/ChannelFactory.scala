@@ -50,6 +50,7 @@ abstract class ChannelFactory extends Logging {
   }
 
   protected def configureClientChannel(channel: SocketChannel, readBufferSize: Int, writeBufferSize: Int, readTimeoutMs: Int) = {
+    info("Configuring plaintext client channel")
     if (readBufferSize > 0)
       channel.socket.setReceiveBufferSize(readBufferSize)
     if (writeBufferSize > 0)

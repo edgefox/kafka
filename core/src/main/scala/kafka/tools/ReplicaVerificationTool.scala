@@ -28,6 +28,7 @@ import kafka.api._
 import java.text.SimpleDateFormat
 import java.util.Date
 import kafka.common.{ErrorMapping, TopicAndPartition}
+import kafka.network.ChannelType
 import kafka.utils._
 import kafka.consumer.{ConsumerConfig, Whitelist, SimpleConsumer}
 
@@ -67,6 +68,11 @@ object ReplicaVerificationTool extends Logging {
                          .withRequiredArg
                          .describedAs("hostname:port,...,hostname:port")
                          .ofType(classOf[String])
+    val channelTypeOpt = parser.accepts("channel", "plaintext or SSL.")
+      .withRequiredArg
+      .defaultsTo("plaintext")
+      .describedAs("ssl, plaintext")
+      .ofType(classOf[String])
     val fetchSizeOpt = parser.accepts("fetch-size", "The fetch size of each request.")
                          .withRequiredArg
                          .describedAs("bytes")
@@ -119,7 +125,8 @@ object ReplicaVerificationTool extends Logging {
     val brokerList = options.valueOf(brokerListOpt)
     ToolsUtils.validatePortOrDie(parser,brokerList)
     val metadataTargetBrokers = ClientUtils.parseBrokerList(brokerList)
-    val topicsMetadataResponse = ClientUtils.fetchTopicMetadata(Set[String](), metadataTargetBrokers, clientId, maxWaitMs)
+    val channelType = options.valueOf(channelTypeOpt)
+    val topicsMetadataResponse = ClientUtils.fetchTopicMetadata(Set[String](), metadataTargetBrokers, ChannelType.getChannelType(channelType), clientId, maxWaitMs)
     val brokerMap = topicsMetadataResponse.brokers.map(b => (b.id, b)).toMap
     val filteredTopicMetadata = topicsMetadataResponse.topicsMetadata.filter(
         topicMetadata => if (topicWhiteListFiler.isTopicAllowed(topicMetadata.topic, excludeInternalTopics = false))
@@ -156,6 +163,7 @@ object ReplicaVerificationTool extends Logging {
 
     val replicaBuffer = new ReplicaBuffer(expectedReplicasPerTopicAndPartition,
                                           leadersPerBroker,
+                                          ChannelType.getChannelType(channelType),
                                           topicAndPartitionsPerBroker.size,
                                           brokerMap,
                                           initialOffsetTime,
@@ -166,6 +174,7 @@ object ReplicaVerificationTool extends Logging {
       case (brokerId, topicAndPartitions) =>
         new ReplicaFetcher(name = "ReplicaFetcher-" + brokerId,
                            sourceBroker = brokerMap(brokerId),
+                           ChannelType.getChannelType(channelType),
                            topicAndPartitions = topicAndPartitions,
                            replicaBuffer = replicaBuffer,
                            socketTimeout = 30000,
@@ -196,6 +205,7 @@ private case class MessageInfo(replicaId: Int, offset: Long, nextOffset: Long, c
 
 private class ReplicaBuffer(expectedReplicasPerTopicAndPartition: Map[TopicAndPartition, Int],
                             leadersPerBroker: Map[Int, Seq[TopicAndPartition]],
+                            channelType: ChannelType,
                             expectedNumFetchers: Int,
                             brokerMap: Map[Int, Broker],
                             initialOffsetTime: Long,
@@ -237,7 +247,7 @@ private class ReplicaBuffer(expectedReplicasPerTopicAndPartition: Map[TopicAndPa
   private def setInitialOffsets() {
     for ((brokerId, topicAndPartitions) <- leadersPerBroker) {
       val broker = brokerMap(brokerId)
-      val consumer = new SimpleConsumer(broker.host, broker.port, 10000, 100000, ReplicaVerificationTool.clientId)
+      val consumer = new SimpleConsumer(broker.host, broker.port, channelType, 10000, 100000, ReplicaVerificationTool.clientId)
       val initialOffsetMap: Map[TopicAndPartition, PartitionOffsetRequestInfo] =
         topicAndPartitions.map(topicAndPartition => topicAndPartition -> PartitionOffsetRequestInfo(initialOffsetTime, 1)).toMap
       val offsetRequest = OffsetRequest(initialOffsetMap)
@@ -335,11 +345,11 @@ private class ReplicaBuffer(expectedReplicasPerTopicAndPartition: Map[TopicAndPa
   }
 }
 
-private class ReplicaFetcher(name: String, sourceBroker: Broker, topicAndPartitions: Iterable[TopicAndPartition],
+private class ReplicaFetcher(name: String, sourceBroker: Broker, channelType: ChannelType, topicAndPartitions: Iterable[TopicAndPartition],
                              replicaBuffer: ReplicaBuffer, socketTimeout: Int, socketBufferSize: Int,
                              fetchSize: Int, maxWait: Int, minBytes: Int, doVerification: Boolean)
   extends ShutdownableThread(name) {
-  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, socketTimeout, socketBufferSize, ReplicaVerificationTool.clientId)
+  val simpleConsumer = new SimpleConsumer(sourceBroker.host, sourceBroker.port, channelType, socketTimeout, socketBufferSize, ReplicaVerificationTool.clientId)
   val fetchRequestBuilder = new FetchRequestBuilder().
           clientId(ReplicaVerificationTool.clientId).
           replicaId(Request.DebuggingConsumerId).

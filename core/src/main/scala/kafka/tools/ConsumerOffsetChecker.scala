@@ -36,7 +36,7 @@ object ConsumerOffsetChecker extends Logging {
   private val offsetMap: mutable.Map[TopicAndPartition, Long] = mutable.Map()
   private var topicPidMap: immutable.Map[String, Seq[Int]] = immutable.Map()
 
-  private def getConsumer(zkClient: ZkClient, bid: Int): Option[SimpleConsumer] = {
+  private def getConsumer(zkClient: ZkClient, channelType: ChannelType, bid: Int): Option[SimpleConsumer] = {
     try {
       ZkUtils.readDataMaybeNull(zkClient, ZkUtils.BrokerIdsPath + "/" + bid)._1 match {
         case Some(brokerInfoString) =>
@@ -45,7 +45,7 @@ object ConsumerOffsetChecker extends Logging {
               val brokerInfo = m.asInstanceOf[Map[String, Any]]
               val host = brokerInfo.get("host").get.asInstanceOf[String]
               val port = brokerInfo.get("port").get.asInstanceOf[Int]
-              Some(new SimpleConsumer(host, port, 10000, 100000, "ConsumerOffsetChecker"))
+              Some(new SimpleConsumer(host, port, channelType, 10000, 100000, "ConsumerOffsetChecker"))
             case None =>
               throw new BrokerNotAvailableException("Broker id %d does not exist".format(bid))
           }
@@ -60,6 +60,7 @@ object ConsumerOffsetChecker extends Logging {
   }
 
   private def processPartition(zkClient: ZkClient,
+                               channelType: ChannelType,
                                group: String, topic: String, pid: Int) {
     val topicPartition = TopicAndPartition(topic, pid)
     val offsetOpt = offsetMap.get(topicPartition)
@@ -67,7 +68,7 @@ object ConsumerOffsetChecker extends Logging {
     val owner = ZkUtils.readDataMaybeNull(zkClient, groupDirs.consumerOwnerDir + "/%s".format(pid))._1
     ZkUtils.getLeaderForPartition(zkClient, topic, pid) match {
       case Some(bid) =>
-        val consumerOpt = consumerMap.getOrElseUpdate(bid, getConsumer(zkClient, bid))
+        val consumerOpt = consumerMap.getOrElseUpdate(bid, getConsumer(zkClient, channelType, bid))
         consumerOpt match {
           case Some(consumer) =>
             val topicAndPartition = TopicAndPartition(topic, pid)
@@ -85,11 +86,11 @@ object ConsumerOffsetChecker extends Logging {
     }
   }
 
-  private def processTopic(zkClient: ZkClient, group: String, topic: String) {
+  private def processTopic(zkClient: ZkClient, channelType: ChannelType, group: String, topic: String) {
     topicPidMap.get(topic) match {
       case Some(pids) =>
         pids.sorted.foreach {
-          pid => processPartition(zkClient, group, topic, pid)
+          pid => processPartition(zkClient, channelType, group, topic, pid)
         }
       case None => // ignore
     }
@@ -193,7 +194,7 @@ object ConsumerOffsetChecker extends Logging {
 
       println("%-15s %-30s %-3s %-15s %-15s %-15s %s".format("Group", "Topic", "Pid", "Offset", "logSize", "Lag", "Owner"))
       topicList.sorted.foreach {
-        topic => processTopic(zkClient, group, topic)
+        topic => processTopic(zkClient, ChannelType.getChannelType(channelType), group, topic)
       }
 
       if (options.has("broker-info"))

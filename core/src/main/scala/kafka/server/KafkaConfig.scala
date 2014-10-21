@@ -104,7 +104,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /* the port to publish to ZooKeeper for clients to use. In IaaS environments, this may
    * need to be different from the port to which the broker binds. If this is not set,
    * it will publish the same port that the broker binds to. */
-  val advertisedPort: Int = props.getInt("advertised.port", port)
+  val advertisedPort: Int = props.getInt("advertised.port", portsToChannelTypes.head._1)
 
   /* the SO_SNDBUFF buffer of the socket sever sockets */
   val socketSendBufferBytes: Int = props.getInt("socket.send.buffer.bytes", 100*1024)
@@ -328,7 +328,7 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
   /* Enables delete topic. Delete topic through the admin tool will have no effect if this config is turned off */
   val deleteTopicEnable = props.getBoolean("delete.topic.enable", false)
 
-  val portsToChannelTypes: Map[Int, ChannelType] = {
+  def portsToChannelTypes: Map[Int, ChannelType] = {
     val portToChannelType = mutable.Map.empty[Int, ChannelType]
     if (port > 0) {
       portToChannelType += port -> ChannelType.getChannelType("plaintext")

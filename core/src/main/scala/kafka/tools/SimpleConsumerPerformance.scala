@@ -21,6 +21,7 @@ import java.net.URI
 import java.text.SimpleDateFormat
 import kafka.api.{PartitionOffsetRequestInfo, FetchRequestBuilder, OffsetRequest}
 import kafka.consumer.SimpleConsumer
+import kafka.network.PlaintextChannelType
 import kafka.utils._
 import org.apache.log4j.Logger
 import kafka.common.TopicAndPartition
@@ -42,7 +43,7 @@ object SimpleConsumerPerformance {
         println("time, fetch.size, data.consumed.in.MB, MB.sec, data.consumed.in.nMsg, nMsg.sec")
     }
 
-    val consumer = new SimpleConsumer(config.url.getHost, config.url.getPort, 30*1000, 2*config.fetchSize, config.clientId)
+    val consumer = new SimpleConsumer(config.url.getHost, config.url.getPort, PlaintextChannelType, 30*1000, 2*config.fetchSize, config.clientId)
 
     // reset to latest or smallest offset
     val topicAndPartition = TopicAndPartition(config.topic, config.partition)
