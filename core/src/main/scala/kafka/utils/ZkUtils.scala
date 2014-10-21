@@ -79,6 +79,17 @@ object ZkUtils extends Logging {
     brokerIds.map(_.toInt).map(getBrokerInfo(zkClient, _)).filter(_.isDefined).map(_.get)
   }
 
+  def getBrokersForChannel(zkClient: ZkClient, channelType: ChannelType): Seq[Broker] = {
+    getAllBrokersInCluster(zkClient).map(broker => {
+      val channel = getExpectedChannelForBroker(zkClient, broker.id, channelType)
+      if (channel.isDefined) {
+        Some(new Broker(broker.id, broker.host, channel.get.port))
+      } else {
+        None
+      }
+    }).filter(_.isDefined).map(_.get)
+  }
+
   def getLeaderAndIsrForPartition(zkClient: ZkClient, topic: String, partition: Int):Option[LeaderAndIsr] = {
     ReplicationUtils.getLeaderIsrAndEpochForPartition(zkClient, topic, partition).map(_.leaderAndIsr)
   }
@@ -712,6 +723,10 @@ object ZkUtils extends Logging {
       Seq.empty[ChannelInfo]
     else
       channels.map { channel => ChannelInfo.createChannelInfo(brokerId, channel) }
+  }
+
+  def getExpectedChannelForBroker(zkClient: ZkClient, brokerId: Int, channelType: ChannelType): Option[ChannelInfo] = {
+    getBrokerChannels(zkClient, brokerId).find(_.channelType == channelType)
   }
 
   def getAllTopics(zkClient: ZkClient): Seq[String] = {

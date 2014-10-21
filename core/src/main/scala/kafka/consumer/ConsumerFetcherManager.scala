@@ -17,20 +17,20 @@
 
 package kafka.consumer
 
-import org.I0Itec.zkclient.ZkClient
-import kafka.server.{BrokerAndInitialOffset, AbstractFetcherThread, AbstractFetcherManager}
-import kafka.cluster.{Cluster, Broker}
-import scala.collection.immutable
-import scala.collection.Map
-import collection.mutable.HashMap
-import scala.collection.mutable
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
+
+import kafka.client.ClientUtils
+import kafka.cluster.{Broker, Cluster}
+import kafka.common.{BrokerChannelNotAvailableException, TopicAndPartition}
+import kafka.server.{AbstractFetcherManager, AbstractFetcherThread, BrokerAndInitialOffset}
 import kafka.utils.Utils.inLock
 import kafka.utils.ZkUtils._
 import kafka.utils.{ShutdownableThread, SystemTime}
-import kafka.common.TopicAndPartition
-import kafka.client.ClientUtils
-import java.util.concurrent.atomic.AtomicInteger
+import org.I0Itec.zkclient.ZkClient
+
+import scala.collection.{immutable, mutable}
+import scala.collection.mutable.HashMap
 
 /**
  *  Usage:
@@ -62,7 +62,11 @@ class ConsumerFetcherManager(private val consumerIdString: String,
         }
 
         trace("Partitions without leader %s".format(noLeaderPartitionSet))
-        val brokers = getAllBrokersInCluster(zkClient)
+        val brokers = getBrokersForChannel(zkClient, config.channelType)
+
+        if (brokers.isEmpty)
+          throw new BrokerChannelNotAvailableException("There is no broker available with channel %s".format(config.channelType.name))
+
         val topicsMetadata = ClientUtils.fetchTopicMetadata(noLeaderPartitionSet.map(m => m.topic).toSet,
                                                             brokers,
                                                             config.channelType,

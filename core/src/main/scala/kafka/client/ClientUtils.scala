@@ -116,9 +116,9 @@ object ClientUtils extends Logging{
      while (!connected) {
        val allBrokers = getAllBrokersInCluster(zkClient)
        Random.shuffle(allBrokers).find { broker =>
-         val channels = getBrokerChannels(zkClient, broker.id).filter(_.channelType == channelType)
-         if (channels.nonEmpty) {
-           val channelInfo = channels.head
+         val channelInfoOpt = getExpectedChannelForBroker(zkClient, broker.id, channelType)
+         if (channelInfoOpt.isDefined) {
+           val channelInfo = channelInfoOpt.get
            trace("Connecting to broker %s:%d.".format(broker.host, channelInfo.port))
            try {
              channel = new BlockingChannel(broker.host, channelInfo.port, channelInfo.channelType, BlockingChannel.UseDefaultBufferSize, BlockingChannel.UseDefaultBufferSize, socketTimeoutMs)
