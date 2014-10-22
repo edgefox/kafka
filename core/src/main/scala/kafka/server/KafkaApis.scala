@@ -60,6 +60,7 @@ class KafkaApis(val requestChannel: RequestChannel,
         case RequestKeys.FetchKey => handleFetchRequest(request)
         case RequestKeys.OffsetsKey => handleOffsetRequest(request)
         case RequestKeys.MetadataKey => handleTopicMetadataRequest(request)
+        case RequestKeys.MetadataForChannelsKey => handleTopicMetadataForChannelsRequest(request)
         case RequestKeys.LeaderAndIsrKey => handleLeaderAndIsrRequest(request)
         case RequestKeys.StopReplicaKey => handleStopReplicaRequest(request)
         case RequestKeys.UpdateMetadataKey => handleUpdateMetadataRequest(request)
@@ -490,6 +491,18 @@ class KafkaApis(val requestChannel: RequestChannel,
     val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataRequest]
     val topicMetadata = getTopicMetadata(metadataRequest.topics.toSet)
     val brokers = metadataCache.getAliveBrokers
+    trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(topicMetadata.mkString(","), brokers.mkString(","), metadataRequest.correlationId, metadataRequest.clientId))
+    val response = new TopicMetadataResponse(brokers, topicMetadata, metadataRequest.correlationId)
+    requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))
+  }
+
+  /**
+   * Service the topic metadata request API with channels info
+   */
+  def handleTopicMetadataForChannelsRequest(request: RequestChannel.Request) {
+    val metadataRequest = request.requestObj.asInstanceOf[TopicMetadataForChannelRequest]
+    val topicMetadata = getTopicMetadata(metadataRequest.topics.toSet)
+    val brokers = metadataCache.getAliveBrokersForChannel(metadataRequest.channelType)
     trace("Sending topic metadata %s and brokers %s for correlation id %d to client %s".format(topicMetadata.mkString(","), brokers.mkString(","), metadataRequest.correlationId, metadataRequest.clientId))
     val response = new TopicMetadataResponse(brokers, topicMetadata, metadataRequest.correlationId)
     requestChannel.sendResponse(new RequestChannel.Response(request, new BoundedByteBufferSend(response)))

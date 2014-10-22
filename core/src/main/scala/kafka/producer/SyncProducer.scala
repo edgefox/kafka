@@ -111,7 +111,7 @@ class SyncProducer(val config: SyncProducerConfig) extends Logging {
   }
 
   def send(request: TopicMetadataRequest): TopicMetadataResponse = {
-    val response = doSend(request)
+    val response = doSend(new TopicMetadataForChannelRequest(request, config.channelType))
     TopicMetadataResponse.readFrom(response.buffer)
   }
 

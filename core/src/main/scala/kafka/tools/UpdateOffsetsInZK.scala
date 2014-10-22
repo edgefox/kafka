@@ -21,7 +21,7 @@ import kafka.network.PlaintextChannelType
 import org.I0Itec.zkclient.ZkClient
 import kafka.consumer.{SimpleConsumer, ConsumerConfig}
 import kafka.api.{PartitionOffsetRequestInfo, OffsetRequest}
-import kafka.common.{TopicAndPartition, KafkaException}
+import kafka.common.{BrokerChannelNotAvailableException, TopicAndPartition, KafkaException}
 import kafka.utils.{ZKGroupTopicDirs, ZkUtils, ZKStringSerializer, Utils}
 
 
@@ -64,9 +64,15 @@ object UpdateOffsetsInZK {
           "getOffsetsBefore request")
       }
 
+      val channelType = PlaintextChannelType
       ZkUtils.getBrokerInfo(zkClient, broker) match {
         case Some(brokerInfo) =>
-          val consumer = new SimpleConsumer(brokerInfo.host, brokerInfo.port, PlaintextChannelType, 10000, 100 * 1024, "UpdateOffsetsInZk")
+          val channelInfo = ZkUtils.getExpectedChannelForBroker(zkClient, brokerInfo.id, channelType)
+          if (channelInfo.isEmpty)
+            throw new BrokerChannelNotAvailableException("There is no channel %s available in broker %s".format(channelType.name,
+                                                                                                      brokerInfo.id))
+
+          val consumer = new SimpleConsumer(brokerInfo.host, channelInfo.get.port, channelType, 10000, 100 * 1024, "UpdateOffsetsInZk")
           val topicAndPartition = TopicAndPartition(topic, partition)
           val request = OffsetRequest(Map(topicAndPartition -> PartitionOffsetRequestInfo(offsetOption, 1)))
           val offset = consumer.getOffsetsBefore(request).partitionErrorAndOffsets(topicAndPartition).offsets.head

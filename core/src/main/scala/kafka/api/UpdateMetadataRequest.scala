@@ -20,7 +20,7 @@ import java.nio.ByteBuffer
 import kafka.api.ApiUtils._
 import kafka.cluster.Broker
 import kafka.common.{ErrorMapping, TopicAndPartition}
-import kafka.network.{BoundedByteBufferSend, RequestChannel}
+import kafka.network.{ChannelInfo, BoundedByteBufferSend, RequestChannel}
 import kafka.network.RequestChannel.Response
 import collection.Set
 
@@ -49,8 +49,10 @@ object UpdateMetadataRequest {
 
     val numAliveBrokers = buffer.getInt
     val aliveBrokers = for(i <- 0 until numAliveBrokers) yield Broker.readFrom(buffer)
+    val numAliveBrokerChannels = buffer.getInt
+    val aliveBrokerChannels = for(i <- 0 until numAliveBrokerChannels) yield ChannelInfo.readFrom(buffer)
     new UpdateMetadataRequest(versionId, correlationId, clientId, controllerId, controllerEpoch,
-      partitionStateInfos.toMap, aliveBrokers.toSet)
+      partitionStateInfos.toMap, aliveBrokers.toSet, aliveBrokerChannels)
   }
 }
 
@@ -60,13 +62,14 @@ case class UpdateMetadataRequest (versionId: Short,
                                   controllerId: Int,
                                   controllerEpoch: Int,
                                   partitionStateInfos: Map[TopicAndPartition, PartitionStateInfo],
-                                  aliveBrokers: Set[Broker])
+                                  aliveBrokers: Set[Broker],
+                                  aliveBrokerChannels: Seq[ChannelInfo])
   extends RequestOrResponse(Some(RequestKeys.UpdateMetadataKey)) {
 
   def this(controllerId: Int, controllerEpoch: Int, correlationId: Int, clientId: String,
-           partitionStateInfos: Map[TopicAndPartition, PartitionStateInfo], aliveBrokers: Set[Broker]) = {
+           partitionStateInfos: Map[TopicAndPartition, PartitionStateInfo], aliveBrokers: Set[Broker], aliveBrokerChannels: Seq[ChannelInfo]) = {
     this(UpdateMetadataRequest.CurrentVersion, correlationId, clientId,
-      controllerId, controllerEpoch, partitionStateInfos, aliveBrokers)
+      controllerId, controllerEpoch, partitionStateInfos, aliveBrokers, aliveBrokerChannels)
   }
 
   def writeTo(buffer: ByteBuffer) {
@@ -83,6 +86,8 @@ case class UpdateMetadataRequest (versionId: Short,
     }
     buffer.putInt(aliveBrokers.size)
     aliveBrokers.foreach(_.writeTo(buffer))
+    buffer.putInt(aliveBrokerChannels.size)
+    aliveBrokerChannels.foreach(_.writeTo(buffer))
   }
 
   def sizeInBytes(): Int = {
@@ -98,6 +103,9 @@ case class UpdateMetadataRequest (versionId: Short,
     size += 4 /* number of alive brokers in the cluster */
     for(broker <- aliveBrokers)
       size += broker.sizeInBytes /* broker info */
+    size += 4 /* number of alive brokers channels in the cluster */
+    for(channel <- aliveBrokerChannels)
+      size += channel.sizeInBytes /* broker channels info */
     size
   }
 
@@ -119,6 +127,7 @@ case class UpdateMetadataRequest (versionId: Short,
     updateMetadataRequest.append(";CorrelationId:" + correlationId)
     updateMetadataRequest.append(";ClientId:" + clientId)
     updateMetadataRequest.append(";AliveBrokers:" + aliveBrokers.mkString(","))
+    updateMetadataRequest.append(";AliveBrokerChannels:" + aliveBrokerChannels.mkString(","))
     if(details)
       updateMetadataRequest.append(";PartitionState:" + partitionStateInfos.mkString(","))
     updateMetadataRequest.toString()

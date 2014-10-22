@@ -21,7 +21,7 @@ import java.util.Properties
 
 import kafka.consumer.ConsumerConfig
 import kafka.message.{Message, MessageSet}
-import kafka.network.ChannelType
+import kafka.network.{ChannelInfo, ChannelType}
 import kafka.network.ssl.SSLConnectionConfig
 import kafka.utils.{Utils, VerifiableProperties, ZKConfig}
 
@@ -341,5 +341,9 @@ class KafkaConfig private (val props: VerifiableProperties) extends ZKConfig(pro
     if (portToChannelType.isEmpty) portToChannelType += 9092 -> ChannelType.getChannelType("plaintext")
 
     portToChannelType.toMap
-  }  
+  }
+
+  def availableChannels: Set[ChannelInfo] = {
+    portsToChannelTypes.map(entry => new ChannelInfo(brokerId, entry._1, entry._2)).toSet
+  }
 }

@@ -16,15 +16,16 @@
 */
 package kafka.controller
 
-import collection._
-import collection.JavaConversions._
 import java.util.concurrent.atomic.AtomicBoolean
-import kafka.common.{TopicAndPartition, StateChangeFailedException}
-import kafka.utils.{ZkUtils, ReplicationUtils, Logging}
-import org.I0Itec.zkclient.IZkChildListener
-import org.apache.log4j.Logger
+
+import kafka.common.{StateChangeFailedException, TopicAndPartition}
 import kafka.controller.Callbacks._
 import kafka.utils.Utils._
+import kafka.utils.{Logging, ReplicationUtils, ZkUtils}
+import org.I0Itec.zkclient.IZkChildListener
+
+import scala.collection.JavaConversions._
+import scala.collection._
 
 /**
  * This class represents the state machine for replicas. It defines the states that a replica can be in, and
@@ -360,12 +361,13 @@ class ReplicaStateMachine(controller: KafkaController) extends Logging {
               val curBrokerIds = currentBrokerList.map(_.toInt).toSet
               val newBrokerIds = curBrokerIds -- controllerContext.liveOrShuttingDownBrokerIds
               val newBrokerInfo = newBrokerIds.map(ZkUtils.getBrokerInfo(zkClient, _))
+              val newBrokerChannels = newBrokerIds.map(id => id -> ZkUtils.getBrokerChannels(zkClient, id).toSet).toMap
               val newBrokers = newBrokerInfo.filter(_.isDefined).map(_.get)
               val deadBrokerIds = controllerContext.liveOrShuttingDownBrokerIds -- curBrokerIds
               controllerContext.liveBrokers = curBrokerIds.map(ZkUtils.getBrokerInfo(zkClient, _)).filter(_.isDefined).map(_.get)
               info("Newly added brokers: %s, deleted brokers: %s, all live brokers: %s"
                 .format(newBrokerIds.mkString(","), deadBrokerIds.mkString(","), controllerContext.liveBrokerIds.mkString(",")))
-              newBrokers.foreach(controllerContext.controllerChannelManager.addBroker(_))
+              newBrokers.foreach(broker => controllerContext.controllerChannelManager.addBroker(broker, newBrokerChannels.get(broker.id).get))
               deadBrokerIds.foreach(controllerContext.controllerChannelManager.removeBroker(_))
               if(newBrokerIds.size > 0)
                 controller.onBrokerStartup(newBrokerIds.toSeq)

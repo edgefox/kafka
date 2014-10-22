@@ -20,8 +20,8 @@ import java.util.concurrent.{BlockingQueue, LinkedBlockingQueue}
 
 import kafka.api.{RequestOrResponse, _}
 import kafka.cluster.Broker
-import kafka.common.TopicAndPartition
-import kafka.network.{BlockingChannel, Receive}
+import kafka.common.{BrokerChannelNotAvailableException, TopicAndPartition}
+import kafka.network.{ChannelInfo, BlockingChannel, Receive}
 import kafka.server.KafkaConfig
 import kafka.utils.{Logging, ShutdownableThread, Utils}
 
@@ -33,7 +33,7 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
   private val brokerLock = new Object
   this.logIdent = "[Channel manager on controller " + config.brokerId + "]: "
 
-  controllerContext.liveBrokers.foreach(addNewBroker(_))
+  controllerContext.liveBrokers.foreach(broker => addNewBroker(broker, controllerContext.liveBrokerChannels.get(broker.id).get.toSet))
 
   def startup() = {
     brokerLock synchronized {
@@ -59,11 +59,11 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
     }
   }
 
-  def addBroker(broker: Broker) {
+  def addBroker(broker: Broker, channels: Set[ChannelInfo]) {
     // be careful here. Maybe the startup() API has already started the request send thread
     brokerLock synchronized {
       if(!brokerStateInfo.contains(broker.id)) {
-        addNewBroker(broker)
+        addNewBroker(broker, channels)
         startRequestSendThread(broker.id)
       }
     }
@@ -75,12 +75,15 @@ class ControllerChannelManager (private val controllerContext: ControllerContext
     }
   }
 
-  private def addNewBroker(broker: Broker) {
+  private def addNewBroker(broker: Broker, channels: Set[ChannelInfo]) {
     val messageQueue = new LinkedBlockingQueue[(RequestOrResponse, (RequestOrResponse) => Unit)](config.controllerMessageQueueSize)
     debug("Controller %d trying to connect to broker %d".format(config.brokerId,broker.id))
+    val availableChannels = channels.intersect(config.availableChannels)
+    if (availableChannels.isEmpty) throw new BrokerChannelNotAvailableException("There are no suitable channels to connect to")
+
     val channel = new BlockingChannel(broker.host,
-                                      config.portsToChannelTypes.head._1,
-                                      config.portsToChannelTypes.head._2,
+                                      availableChannels.head.port,
+                                      availableChannels.head.channelType,
                                       BlockingChannel.UseDefaultBufferSize,
                                       BlockingChannel.UseDefaultBufferSize,
                                       config.controllerSocketTimeoutMs)
@@ -291,8 +294,9 @@ class ControllerBrokerRequestBatch(controller: KafkaController) extends  Logging
     updateMetadataRequestMap.foreach { m =>
       val broker = m._1
       val partitionStateInfos = m._2.toMap
+      val allChannels = controllerContext.liveBrokerChannels.values.flatten.toSeq
       val updateMetadataRequest = new UpdateMetadataRequest(controllerId, controllerEpoch, correlationId, clientId,
-        partitionStateInfos, controllerContext.liveOrShuttingDownBrokers)
+        partitionStateInfos, controllerContext.liveOrShuttingDownBrokers, allChannels)
       partitionStateInfos.foreach(p => stateChangeLogger.trace(("Controller %d epoch %d sending UpdateMetadata request %s with " +
         "correlationId %d to broker %d for partition %s").format(controllerId, controllerEpoch, p._2.leaderIsrAndControllerEpoch,
         correlationId, broker, p._1)))

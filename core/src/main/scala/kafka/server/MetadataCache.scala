@@ -17,6 +17,8 @@
 
 package kafka.server
 
+import kafka.network.{ChannelType, ChannelInfo}
+
 import scala.collection.{Seq, Set, mutable}
 import kafka.api._
 import kafka.cluster.Broker
@@ -34,6 +36,7 @@ private[server] class MetadataCache {
   private val cache: mutable.Map[String, mutable.Map[Int, PartitionStateInfo]] =
     new mutable.HashMap[String, mutable.Map[Int, PartitionStateInfo]]()
   private var aliveBrokers: Map[Int, Broker] = Map()
+  private var aliveBrokerChannels: Map[Int, List[ChannelInfo]] = Map()
   private val partitionMetadataLock = new ReentrantReadWriteLock()
 
   def getTopicMetadata(topics: Set[String]) = {
@@ -86,6 +89,19 @@ private[server] class MetadataCache {
     }
   }
 
+  def getAliveBrokersForChannel(channelType: ChannelType) = {
+    inReadLock(partitionMetadataLock) {
+                                        aliveBrokers.values.map(broker => {
+                                          val channel = aliveBrokerChannels.get(broker.id).get.find(_.channelType == channelType)
+                                          if (channel.isDefined) {
+                                            Some(new Broker(broker.id, broker.host, channel.get.port))
+                                          } else {
+                                            None
+                                          }
+                                        }).filter(_.isDefined).map(_.get).toSeq
+                                      }
+  }
+
   def addOrUpdatePartitionInfo(topic: String,
                                partitionId: Int,
                                stateInfo: PartitionStateInfo) {
@@ -130,6 +146,12 @@ private[server] class MetadataCache {
             updateMetadataRequest.controllerEpoch, updateMetadataRequest.correlationId))
         }
       }
+      aliveBrokerChannels = updateMetadataRequest.aliveBrokerChannels.foldLeft(mutable.Map.empty[Int, List[ChannelInfo]])((collection, element) => {
+        val entry = collection.get(brokerId)
+        if (entry.isDefined) collection += element.brokerId -> entry.get.::(element)
+        else collection += element.brokerId -> List(element)
+        collection
+      }).toMap
     }
   }
 

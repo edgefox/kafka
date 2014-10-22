@@ -16,30 +16,27 @@
  */
 package kafka.controller
 
-import collection._
-import collection.Set
-import com.yammer.metrics.core.Gauge
-import java.lang.{IllegalStateException, Object}
 import java.util.concurrent.TimeUnit
-import kafka.admin.AdminUtils
-import kafka.admin.PreferredReplicaLeaderElectionCommand
-import kafka.api._
-import kafka.cluster.Broker
-import kafka.common._
-import kafka.log.LogConfig
-import kafka.metrics.{KafkaTimer, KafkaMetricsGroup}
-import kafka.utils.ZkUtils._
-import kafka.utils._
-import kafka.utils.Utils._
-import org.apache.zookeeper.Watcher.Event.KeeperState
-import org.I0Itec.zkclient.{IZkDataListener, IZkStateListener, ZkClient}
-import org.I0Itec.zkclient.exception.{ZkNodeExistsException, ZkNoNodeException}
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.locks.ReentrantLock
-import scala.None
+
+import com.yammer.metrics.core.Gauge
+import kafka.admin.{AdminUtils, PreferredReplicaLeaderElectionCommand}
+import kafka.api._
+import kafka.cluster.Broker
+import kafka.common.{TopicAndPartition, _}
+import kafka.log.LogConfig
+import kafka.metrics.{KafkaMetricsGroup, KafkaTimer}
+import kafka.network.ChannelInfo
 import kafka.server._
-import scala.Some
-import kafka.common.TopicAndPartition
+import kafka.utils.Utils._
+import kafka.utils.ZkUtils._
+import kafka.utils._
+import org.I0Itec.zkclient.exception.{ZkNoNodeException, ZkNodeExistsException}
+import org.I0Itec.zkclient.{IZkDataListener, IZkStateListener, ZkClient}
+import org.apache.zookeeper.Watcher.Event.KeeperState
+
+import scala.collection.{Set, _}
 
 class ControllerContext(val zkClient: ZkClient,
                         val zkSessionTimeout: Int) {
@@ -58,16 +55,19 @@ class ControllerContext(val zkClient: ZkClient,
 
   private var liveBrokersUnderlying: Set[Broker] = Set.empty
   private var liveBrokerIdsUnderlying: Set[Int] = Set.empty
+  private var liveBrokerChannelsUnderlying: Map[Int, Seq[ChannelInfo]] = Map.empty
 
   // setter
   def liveBrokers_=(brokers: Set[Broker]) {
     liveBrokersUnderlying = brokers
     liveBrokerIdsUnderlying = liveBrokersUnderlying.map(_.id)
+    liveBrokerChannelsUnderlying = liveBrokersUnderlying.map(broker => broker.id -> getBrokerChannels(zkClient, broker.id)).toMap
   }
 
   // getter
   def liveBrokers = liveBrokersUnderlying.filter(broker => !shuttingDownBrokerIds.contains(broker.id))
   def liveBrokerIds = liveBrokerIdsUnderlying.filter(brokerId => !shuttingDownBrokerIds.contains(brokerId))
+  def liveBrokerChannels = liveBrokerChannelsUnderlying.filter(entry => !shuttingDownBrokerIds.contains(entry._1))
 
   def liveOrShuttingDownBrokerIds = liveBrokerIdsUnderlying
   def liveOrShuttingDownBrokers = liveBrokersUnderlying

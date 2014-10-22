@@ -22,6 +22,7 @@ import java.nio.ByteBuffer
 import kafka.api.ApiUtils._
 import kafka.common.{BrokerChannelNotAvailableException, KafkaException, BrokerNotAvailableException}
 import kafka.utils.Json
+import kafka.utils.Utils._
 
 object ChannelInfo {
 
@@ -53,5 +54,24 @@ object ChannelInfo {
 }
 
 class ChannelInfo(val brokerId: Int, val port: Int, val channelType: ChannelType) {
+
+  def writeTo(buffer: ByteBuffer) {
+    buffer.putInt(brokerId)
+    buffer.putInt(port)
+    writeShortString(buffer, channelType.name)
+  }
+
+  def sizeInBytes: Int = shortStringLength(channelType.name) /* channel type */ + 4 /* port */ + 4 /* broker id*/
+
   override def toString: String = "brokerId:%d,port:%d,type:%s".format(brokerId, port, channelType)
+
+  override def equals(obj: Any): Boolean = {
+    obj match {
+      case null => false
+      case n: ChannelInfo => brokerId == n.brokerId && port == n.port && channelType == n.channelType
+      case _ => false
+    }
+  }
+
+  override def hashCode(): Int = hashcode(brokerId, port, channelType)
 }

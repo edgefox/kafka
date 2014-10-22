@@ -722,7 +722,9 @@ object ZkUtils extends Logging {
     if(channels == null)
       Seq.empty[ChannelInfo]
     else
-      channels.map { channel => ChannelInfo.createChannelInfo(brokerId, channel) }
+      channels.map { channelName => ChannelInfo.createChannelInfo(brokerId,
+                                                                  ZkUtils.readDataMaybeNull(zkClient,
+                                                                                            ZkUtils.BrokerChannelsPath + "/" + brokerId +  "/" + channelName)._1.get) }
   }
 
   def getExpectedChannelForBroker(zkClient: ZkClient, brokerId: Int, channelType: ChannelType): Option[ChannelInfo] = {
