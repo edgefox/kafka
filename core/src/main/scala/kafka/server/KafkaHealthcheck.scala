@@ -51,6 +51,7 @@ class KafkaHealthcheck(private val brokerId: Int,
   def shutdown() {
     zkClient.unsubscribeStateChanges(sessionExpireListener)
     ZkUtils.deregisterBrokerInZk(zkClient, brokerId)
+    ZkUtils.deregisterBrokerChannelsInZk(zkClient, brokerId)
   }
 
   /**
